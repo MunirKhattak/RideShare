@@ -469,7 +469,7 @@ function Header({ user, setView, onSignInClick, onInstall }: { user: User | null
             <Button 
               variant="outline" 
               size="sm" 
-              className="rounded-full border-blue-500 text-blue-600 hover:bg-blue-50 h-8 text-xs font-bold" 
+              className="rounded-full border-blue-500 text-blue-600 hover:bg-blue-50 h-8 text-xs font-bold animate-slow-blink" 
               onClick={onInstall}
             >
               Install App

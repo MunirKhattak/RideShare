@@ -46,6 +46,7 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    --radius-3xl: calc(var(--radius) * 2.2);
 }
 
 :root {
@@ -127,4 +128,12 @@
   html {
     @apply font-sans;
     }
+}
+
+@keyframes slow-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.animate-slow-blink {
+  animation: slow-blink 3s ease-in-out infinite;
 }
