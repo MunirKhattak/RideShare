@@ -1,0 +1,199 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string (required)
+    //   - email: string (required, email format)
+    //   - photoURL: string (optional)
+    //   - phoneNumber: string (optional)
+    //   - whatsappNumber: string (optional)
+    //   - role: string (required, enum: ['driver', 'passenger', 'both'])
+    //   - bio: string (optional, max 500 chars)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: rides
+    // Document ID: {rideId}
+    // Fields:
+    //   - driverId: string (required)
+    //   - driverName: string (required)
+    //   - driverPhoto: string (optional)
+    //   - origin: string (required)
+    //   - destination: string (required)
+    //   - date: string (required, YYYY-MM-DD)
+    //   - time: string (required)
+    //   - pickupPoint: string (required)
+    //   - dropoffPoint: string (required)
+    //   - availableSeats: number (required, positive)
+    //   - price: number (required, positive)
+    //   - status: string (required, enum: ['available', 'full', 'completed', 'cancelled'])
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: rideRequests
+    // Document ID: {requestId}
+    // Fields:
+    //   - passengerId: string (required)
+    //   - passengerName: string (required)
+    //   - passengerPhoto: string (optional)
+    //   - origin: string (required)
+    //   - destination: string (required)
+    //   - date: string (required, YYYY-MM-DD)
+    //   - time: string (required)
+    //   - status: string (required, enum: ['pending', 'matched', 'cancelled'])
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: chats/{chatId}/messages
+    // Document ID: {messageId}
+    // Fields:
+    //   - senderId: string (required)
+    //   - receiverId: string (required)
+    //   - text: string (required, max 1000 chars)
+    //   - rideId: string (optional)
+    //   - timestamp: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "munirkhattak.pk@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'customId', 'displayName', 'email', 'role', 'createdAt']) &&
+             hasOnlyAllowedFields(['uid', 'customId', 'displayName', 'email', 'photoURL', 'phoneNumber', 'whatsappNumber', 'role', 'bio', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['driver', 'passenger', 'both', 'admin'] &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 500));
+    }
+
+    function isValidRide(data) {
+      return hasRequiredFields(['driverId', 'driverName', 'origin', 'destination', 'date', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'createdAt']) &&
+             hasOnlyAllowedFields(['driverId', 'driverName', 'driverPhoto', 'phoneNumber', 'whatsappNumber', 'origin', 'destination', 'date', 'day', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'createdAt']) &&
+             data.driverId == request.auth.uid &&
+             data.availableSeats is number && data.availableSeats >= 0 &&
+             data.price is number && data.price >= 0 &&
+             data.status in ['available', 'full', 'completed', 'cancelled'];
+    }
+
+    function isValidRideRequest(data) {
+      return hasRequiredFields(['passengerId', 'passengerName', 'origin', 'destination', 'date', 'time', 'status', 'createdAt']) &&
+             hasOnlyAllowedFields(['passengerId', 'passengerName', 'passengerPhoto', 'phoneNumber', 'whatsappNumber', 'origin', 'destination', 'date', 'day', 'time', 'status', 'createdAt']) &&
+             data.passengerId == request.auth.uid &&
+             data.status in ['pending', 'matched', 'cancelled'];
+    }
+
+    function isValidMessage(data) {
+      return hasRequiredFields(['senderId', 'receiverId', 'text', 'timestamp']) &&
+             data.senderId == request.auth.uid &&
+             data.text is string && data.text.size() > 0 && data.text.size() <= 1000;
+    }
+
+    function isValidComplaint(data) {
+      return hasRequiredFields(['userId', 'userName', 'complaintNumber', 'subject', 'description', 'status', 'userAcknowledged', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.status in ['pending', 'resolved'] &&
+             data.userAcknowledged is bool;
+    }
+
+    function isValidAnalytics(data) {
+      return hasRequiredFields(['visits']) &&
+             data.visits is number && data.visits >= 0;
+    }
+
+    function isValidWarning(data) {
+      return hasRequiredFields(['userId', 'adminMessage', 'status', 'createdAt']) &&
+             data.status in ['pending', 'replied'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || isAdmin();
+    }
+
+    match /rides/{rideId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidRide(request.resource.data);
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.driverId || isAdmin()) && isValidRide(request.resource.data);
+      allow delete: if isAuthenticated() && (request.auth.uid == resource.data.driverId || isAdmin());
+    }
+
+    match /rideRequests/{requestId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidRideRequest(request.resource.data);
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.passengerId || isAdmin()) && isValidRideRequest(request.resource.data);
+      allow delete: if isAuthenticated() && (request.auth.uid == resource.data.passengerId || isAdmin());
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (resource.data.receiverId == request.auth.uid || resource.data.senderId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidMessage(request.resource.data);
+    }
+
+    match /chats/{chatId}/messages/{messageId} {
+      // chatId is usually a combination of two user UIDs
+      allow read: if isAuthenticated() && (chatId.contains(request.auth.uid) || isAdmin());
+      allow create: if isAuthenticated() && (chatId.contains(request.auth.uid)) && isValidMessage(request.resource.data);
+    }
+
+    match /complaints/{complaintId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidComplaint(request.resource.data);
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userAcknowledged']));
+    }
+
+    match /analytics/{dateId} {
+      allow read: if isAdmin();
+      allow create, update: if isAuthenticated(); // Anyone can increment visit count
+    }
+
+    match /warnings/{warningId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userReply', 'status']));
+    }
+  }
+}

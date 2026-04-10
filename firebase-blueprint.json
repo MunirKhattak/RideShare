@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "photoURL": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
+        "role": { "type": "string", "enum": ["driver", "passenger", "both"] },
+        "bio": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName"]
+    },
+    "Ride": {
+      "title": "Ride",
+      "description": "A ride offered by a driver",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "driverId": { "type": "string" },
+        "driverName": { "type": "string" },
+        "driverPhoto": { "type": "string" },
+        "origin": { "type": "string" },
+        "destination": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "time": { "type": "string" },
+        "pickupPoint": { "type": "string" },
+        "dropoffPoint": { "type": "string" },
+        "availableSeats": { "type": "number" },
+        "price": { "type": "number" },
+        "status": { "type": "string", "enum": ["available", "full", "completed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["driverId", "origin", "destination", "date", "time"]
+    },
+    "RideRequest": {
+      "title": "RideRequest",
+      "description": "A request for a ride by a passenger",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "passengerId": { "type": "string" },
+        "passengerName": { "type": "string" },
+        "passengerPhoto": { "type": "string" },
+        "origin": { "type": "string" },
+        "destination": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "time": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "matched", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["passengerId", "origin", "destination", "date", "time"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A message sent between users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "text": { "type": "string" },
+        "rideId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "receiverId", "text", "timestamp"]
+    },
+    "Complaint": {
+      "title": "Complaint",
+      "description": "User complaints",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userCustomId": { "type": "string" },
+        "complaintNumber": { "type": "string" },
+        "subject": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "resolved"] },
+        "adminReply": { "type": "string" },
+        "userAcknowledged": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "complaintNumber", "subject", "description", "status", "userAcknowledged", "createdAt"]
+    },
+    "Analytics": {
+      "title": "Analytics",
+      "description": "App analytics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "visits": { "type": "number" }
+      },
+      "required": ["visits"]
+    },
+    "Warning": {
+      "title": "Warning",
+      "description": "Admin warnings to users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "adminMessage": { "type": "string" },
+        "userReply": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "replied"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "adminMessage", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/rides/{rideId}": {
+      "schema": "Ride",
+      "description": "Available rides offered by drivers"
+    },
+    "/rideRequests/{requestId}": {
+      "schema": "RideRequest",
+      "description": "Ride requests from passengers"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Messages in a chat thread"
+    },
+    "/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Global messages collection for notifications"
+    },
+    "/complaints/{complaintId}": {
+      "schema": "Complaint",
+      "description": "User complaints"
+    },
+    "/analytics/{dateId}": {
+      "schema": "Analytics",
+      "description": "Daily app analytics"
+    },
+    "/warnings/{warningId}": {
+      "schema": "Warning",
+      "description": "Admin warnings and user replies"
+    }
+  }
+}
