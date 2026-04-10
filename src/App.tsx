@@ -1010,19 +1010,19 @@ function RouteSearch({ setView, userRole, setSelectedItem }: { setView: (v: any)
     e.preventDefault();
     const collectionName = userRole === 'driver' ? 'rideRequests' : 'rides';
     
-    let q = query(collection(db, collectionName));
-    
-    if (searchData.origin) {
-      q = query(q, where('origin', '==', searchData.origin));
-    }
-    if (searchData.destination) {
-      q = query(q, where('destination', '==', searchData.destination));
-    }
+    // Fetch all documents and filter client-side for case-insensitivity
+    const q = query(collection(db, collectionName));
     
     onSnapshot(q, (snapshot) => {
       let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // Client-side filtering for date
+      // Client-side filtering
+      if (searchData.origin) {
+        data = data.filter((item: any) => item.origin?.toLowerCase() === searchData.origin.toLowerCase());
+      }
+      if (searchData.destination) {
+        data = data.filter((item: any) => item.destination?.toLowerCase() === searchData.destination.toLowerCase());
+      }
       if (searchData.date) {
         data = data.filter((item: any) => item.date === searchData.date);
       }
