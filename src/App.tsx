@@ -60,6 +60,25 @@ export default function App() {
   const [view, setView] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'profile_view' | 'chat' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint'>('main');
   const [activeWarning, setActiveWarning] = useState<Warning | null>(null);
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    });
+  }, []);
+
+  const handleInstall = () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult: any) => {
+        if (choiceResult.outcome === 'accepted') {
+          setDeferredPrompt(null);
+        }
+      });
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -333,8 +352,8 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Toaster position="top-center" />
-      <Header user={user} setView={setView} onSignInClick={() => setShowSignInModal(true)} />
-      <main className="flex-1 max-w-4xl w-full mx-auto p-4">
+      <Header user={user} setView={setView} onSignInClick={() => setShowSignInModal(true)} onInstall={deferredPrompt ? handleInstall : undefined} />
+      <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-8">
         <AnimatePresence mode="wait">
           <motion.div
             key={view}
@@ -382,7 +401,7 @@ export default function App() {
   );
 }
 
-function Header({ user, setView, onSignInClick }: { user: User | null, setView: (v: any) => void, onSignInClick: () => void }) {
+function Header({ user, setView, onSignInClick, onInstall }: { user: User | null, setView: (v: any) => void, onSignInClick: () => void, onInstall?: () => void }) {
   return (
     <header className="bg-white border-b sticky top-0 z-50 shadow-sm">
       <div className="px-4 py-3 flex items-center justify-between">
@@ -446,6 +465,16 @@ function Header({ user, setView, onSignInClick }: { user: User | null, setView: 
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {onInstall && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="rounded-full border-blue-500 text-blue-600 hover:bg-blue-50 h-8 text-xs font-bold" 
+              onClick={onInstall}
+            >
+              Install App
+            </Button>
+          )}
           {user && user.email === 'munirkhattak.pk@gmail.com' && (
             <Button 
               variant="ghost" 
@@ -1307,19 +1336,22 @@ function PostForm({ user, profile, setView, type }: { user: User | null, profile
                 <Input type="number" value={formData.seats} onChange={e => setFormData({...formData, seats: e.target.value})} required />
               </div>
               <div className="space-y-2">
-                <div className="flex items-center gap-1">
-                  <Label>Karaaya <span className="font-normal text-[0.75rem] text-slate-500">(Entehaai Munaasib Karaaya Rakhen)</span></Label>
-                  <Popover>
-                    <PopoverTrigger className="text-slate-400 hover:text-blue-600 transition-colors">
-                      <Info className="w-4 h-4" />
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80 p-4 bg-white shadow-xl border-slate-200 rounded-xl">
-                      <p className="text-sm text-slate-600 leading-relaxed">
-                        Karaaya entehaai munaasib rakhen, Ziaada karaaya na rakhen takeh ksi bhi qisam k maslay/tanaazay se bacha ja sakay
-                      </p>
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1">
+                      <Label>Karaaya</Label>
+                      <Popover>
+                        <PopoverTrigger className="text-slate-400 hover:text-blue-600 transition-colors">
+                          <Info className="w-4 h-4" />
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-4 bg-white shadow-xl border-slate-200 rounded-xl">
+                          <p className="text-sm text-slate-600 leading-relaxed">
+                            Karaaya entehaai munaasib rakhen, Ziaada karaaya na rakhen takeh ksi bhi qisam k maslay/tanaazay se bacha ja sakay
+                          </p>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <span className="font-normal text-[0.70rem] text-slate-500 leading-none">(Entehaai Munaasib Karaaya Rakhen)</span>
+                  </div>
                 <Input type="number" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required />
               </div>
             </div>
