@@ -602,7 +602,7 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
         setStep(2);
       }
     } catch (error) {
-      toast.error("Sign in fail ho gaya.");
+      toast.error(`Sign in fail ho gaya: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
