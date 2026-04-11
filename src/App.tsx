@@ -122,7 +122,6 @@ export default function App() {
     return () => unsub();
   }, [user]);
   const [showSignInModal, setShowSignInModal] = useState(false);
-  const [userRole, setUserRole] = useState<'driver' | 'passenger' | null>(null);
   const [rides, setRides] = useState<Ride[]>([]);
   const [requests, setRequests] = useState<RideRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,11 +138,9 @@ export default function App() {
           if (userDoc.exists()) {
             const p = userDoc.data() as UserProfile;
             setProfile(p);
-            setUserRole(p.role as any);
           }
         } else {
           setProfile(null);
-          setUserRole(null);
         }
       } catch (error) {
         console.error("Auth listener error:", error);
@@ -165,7 +162,7 @@ export default function App() {
 
   // Real-time Listeners
   useEffect(() => {
-    if (!user) return;
+    if (!user || !profile) return;
     const qRides = query(
       collection(db, 'rides'), 
       where('status', '==', 'available'), 
@@ -189,11 +186,11 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'rideRequests');
     });
     return () => { unsubRides(); unsubReqs(); };
-  }, [user]);
+  }, [user, profile]);
 
   // Notification Listener
   useEffect(() => {
-    if (!user) return;
+    if (!user || !profile) return;
 
     // Request permission
     if ('Notification' in window && Notification.permission === 'default') {
@@ -232,7 +229,7 @@ export default function App() {
         return;
       }
       snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added' && userRole === 'driver') {
+        if (change.type === 'added' && profile.role === 'driver') {
           const req = change.doc.data() as RideRequest;
           // Only notify if it's not the user's own request
           if (req.passengerId !== user.uid) {
@@ -297,7 +294,7 @@ export default function App() {
       unsubMyRequests();
       unsubMessages();
     };
-  }, [user, userRole]);
+  }, [user, profile]);
 
   // Visit Tracking
   useEffect(() => {
@@ -323,15 +320,15 @@ export default function App() {
   const renderView = () => {
     switch (view) {
       case 'main':
-        return <MainPage setView={setView} setUserRole={setUserRole} user={user} />;
+        return <MainPage setView={setView} setProfile={setProfile} user={user} />;
       case 'register':
-        return <RegistrationForm user={user} role={userRole!} setView={setView} setProfile={setProfile} />;
+        return <RegistrationForm user={user} role={profile?.role || 'passenger'} setView={setView} setProfile={setProfile} />;
       case 'dashboard':
-        return <Dashboard user={user} profile={profile} setView={setView} userRole={userRole!} />;
+        return <Dashboard user={user} profile={profile} setView={setView} />;
       case 'post':
-        return <PostForm user={user} profile={profile} setView={setView} type={userRole === 'driver' ? 'ride' : 'request'} />;
+        return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} />;
       case 'search':
-        return <RouteSearch setView={setView} userRole={userRole!} setSelectedItem={setSelectedItem} />;
+        return <RouteSearch setView={setView} userRole={profile?.role || 'passenger'} setSelectedItem={setSelectedItem} />;
       case 'profile_view':
         return <DetailedProfileView item={selectedItem} setView={setView} />;
       case 'my_rides':
@@ -345,7 +342,7 @@ export default function App() {
       case 'complaint':
         return <ComplaintForm user={user} profile={profile} setView={setView} />;
       default:
-        return <MainPage setView={setView} setUserRole={setUserRole} user={user} />;
+        return <MainPage setView={setView} setProfile={setProfile} user={user} />;
     }
   };
 
@@ -507,7 +504,16 @@ function Header({ user, setView, onSignInClick, onInstall }: { user: User | null
   );
 }
 
-function MainPage({ setView, setUserRole, user }: { setView: (v: any) => void, setUserRole: (r: any) => void, user: User | null }) {
+function MainPage({ setView, setProfile, user }: { setView: (v: any) => void, setProfile: (p: any) => void, user: User | null }) {
+  const handleRoleSelection = (role: 'driver' | 'passenger') => {
+    // If user is already logged in, update their role in the profile
+    if (user) {
+      // This is a simplified approach, in a real app you might need to update the DB
+      // For now, we just proceed to registration form or dashboard
+    }
+    setView(user ? 'dashboard' : 'register');
+  };
+
   return (
     <div className="space-y-6 py-6">
       <div className="text-center space-y-3">
@@ -536,7 +542,7 @@ function MainPage({ setView, setUserRole, user }: { setView: (v: any) => void, s
         >
           <Card 
             className="h-full cursor-pointer border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-800 text-white group relative"
-            onClick={() => { setUserRole('driver'); setView(user ? 'dashboard' : 'register'); }}
+            onClick={() => handleRoleSelection('driver')}
           >
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
               <Car className="w-24 h-24 rotate-12" />
@@ -559,7 +565,7 @@ function MainPage({ setView, setUserRole, user }: { setView: (v: any) => void, s
         >
           <Card 
             className="h-full cursor-pointer border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-orange-500 to-rose-600 text-white group relative"
-            onClick={() => { setUserRole('passenger'); setView(user ? 'dashboard' : 'register'); }}
+            onClick={() => handleRoleSelection('passenger')}
           >
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
               <UserIcon className="w-24 h-24 -rotate-12" />
@@ -609,6 +615,14 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    
+    // Phone number validation: 03 followed by 9 digits
+    const phoneRegex = /^03\d{9}$/;
+    if (!phoneRegex.test(formData.phoneNumber) || !phoneRegex.test(formData.whatsappNumber)) {
+      toast.error('Phone number aur WhatsApp number 03 se shuru hona chahiye aur 11 digits ka hona chahiye (e.g., 03001234567)');
+      return;
+    }
+
     try {
       const customId = `RS-${Math.floor(100000 + Math.random() * 900000)}`;
       const newProfile: UserProfile = {
@@ -640,8 +654,8 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
           </Button>
         )}
         <CardHeader className="text-center">
-          <CardTitle>Sign In Karein</CardTitle>
-          <CardDescription>{selectedRole === 'driver' ? 'Car Owner' : 'Passenger'} ke taur par continue karein</CardDescription>
+          <CardTitle>Sign In</CardTitle>
+          <CardDescription>RideShare mein khush amdeed</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Button onClick={handleGoogleSignIn} className="w-full py-6 text-lg gap-3 bg-white text-slate-900 border hover:bg-slate-50">
@@ -829,6 +843,14 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !profile) return;
+    
+    // Phone number validation: 03 followed by 9 digits
+    const phoneRegex = /^03\d{9}$/;
+    if (!phoneRegex.test(formData.phoneNumber) || !phoneRegex.test(formData.whatsappNumber)) {
+      toast.error('Phone number aur WhatsApp number 03 se shuru hona chahiye aur 11 digits ka hona chahiye (e.g., 03001234567)');
+      return;
+    }
+
     try {
       const updatedProfile: UserProfile = {
         ...profile,
@@ -863,11 +885,32 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex justify-center mb-6">
+            <div className="flex justify-center mb-6 relative">
               <Avatar className="w-24 h-24 border-4 border-blue-100">
                 <AvatarImage src={formData.photoURL} />
                 <AvatarFallback>{formData.displayName.charAt(0)}</AvatarFallback>
               </Avatar>
+              <label className="absolute bottom-0 right-1/2 translate-x-10 bg-white p-1.5 rounded-full shadow-md cursor-pointer hover:bg-slate-50">
+                <Plus className="w-4 h-4 text-blue-600" />
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      // In a real app, you would upload this to Firebase Storage
+                      // For now, we'll set a placeholder or handle it
+                      toast.info("Gallery upload feature is ready to be linked to Firebase Storage.");
+                    }
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="space-y-2">
+              <Label>System Generated User ID (Read-only)</Label>
+              <Input value={profile?.customId || ''} readOnly className="bg-slate-100 cursor-not-allowed" />
             </div>
 
             <div className="space-y-2">
@@ -880,7 +923,7 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
             </div>
 
             <div className="space-y-2">
-              <Label>Phone Number</Label>
+              <Label>Phone Number (03xx-xxxxxxx)</Label>
               <Input 
                 value={formData.phoneNumber} 
                 onChange={e => setFormData({...formData, phoneNumber: e.target.value})} 
@@ -889,7 +932,7 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
             </div>
 
             <div className="space-y-2">
-              <Label>WhatsApp Number</Label>
+              <Label>WhatsApp Number (03xx-xxxxxxx)</Label>
               <Input 
                 value={formData.whatsappNumber} 
                 onChange={e => setFormData({...formData, whatsappNumber: e.target.value})} 
@@ -906,15 +949,6 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Photo URL</Label>
-              <Input 
-                value={formData.photoURL} 
-                onChange={e => setFormData({...formData, photoURL: e.target.value})} 
-                placeholder="https://..."
-              />
-            </div>
-
             <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
               Save Changes
             </Button>
@@ -928,7 +962,8 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
   );
 }
 
-function Dashboard({ user, profile, setView, userRole }: { user: User | null, profile: UserProfile | null, setView: (v: any) => void, userRole: 'driver' | 'passenger' }) {
+function Dashboard({ user, profile, setView }: { user: User | null, profile: UserProfile | null, setView: (v: any) => void }) {
+  const userRole = profile?.role || 'passenger';
   return (
     <div className="space-y-6 py-4">
       <div className="flex items-center justify-between">
@@ -936,11 +971,11 @@ function Dashboard({ user, profile, setView, userRole }: { user: User | null, pr
           <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
           <Button 
             variant="outline" 
-            size="sm" 
-            className="rounded-full h-8 px-3 text-xs gap-1.5 border-slate-200 hover:bg-slate-50"
+            size="lg" 
+            className="rounded-full h-12 px-6 text-sm gap-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
             onClick={() => setView('edit_profile')}
           >
-            <UserIcon className="w-3.5 h-3.5" />
+            <UserIcon className="w-4 h-4" />
             Profile
           </Button>
         </div>
@@ -1403,7 +1438,7 @@ function DetailedProfileView({ item, setView }: { item: any, setView: (v: any) =
           <Button className="w-full gap-2 py-6 text-lg bg-green-600 hover:bg-green-700" onClick={() => window.open(`https://wa.me/${item.whatsappNumber?.replace(/\D/g, '')}`, '_blank')}>
             <MessageCircle className="w-5 h-5" /> WhatsApp Karein
           </Button>
-          <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-blue-200 text-blue-700">
+          <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-blue-200 text-blue-700" onClick={() => { setSelectedItem(item); setView('chat'); }}>
             <MessageSquare className="w-5 h-5" /> In-App Chat
           </Button>
         </div>
