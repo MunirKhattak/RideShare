@@ -25,6 +25,13 @@ export interface Ride {
   availableSeats: number;
   price: number;
   status: 'available' | 'full' | 'completed' | 'cancelled';
+  interactions?: {
+    call: number;
+    whatsapp: number;
+    chat: number;
+  };
+  finalStatus?: 'done' | 'cancelled' | 'late' | 'pending';
+  statusReportedAt?: any;
   createdAt: any;
 }
 
@@ -38,6 +45,13 @@ export interface RideRequest {
   date: string;
   time: string;
   status: 'pending' | 'matched' | 'cancelled';
+  interactions?: {
+    call: number;
+    whatsapp: number;
+    chat: number;
+  };
+  finalStatus?: 'done' | 'cancelled' | 'late' | 'pending';
+  statusReportedAt?: any;
   createdAt: any;
 }
 

@@ -16,7 +16,8 @@ import {
   deleteDoc,
   limit,
   increment,
-  getCountFromServer
+  getCountFromServer,
+  getDocFromServer
 } from 'firebase/firestore';
 import { UserProfile, Ride, RideRequest, ChatMessage, Complaint, Analytics, Warning } from './types';
 import { Button } from '@/components/ui/button';
@@ -55,6 +56,17 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 
+const trackInteraction = async (rideId: string, type: 'call' | 'whatsapp' | 'chat', collectionName: 'rides' | 'rideRequests') => {
+  try {
+    const docRef = doc(db, collectionName, rideId);
+    await updateDoc(docRef, {
+      [`interactions.${type}`]: increment(1)
+    });
+  } catch (error) {
+    console.error('Error tracking interaction:', error);
+  }
+};
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -64,6 +76,58 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   const [waModalData, setWaModalData] = useState<any>(null);
+
+  const [pendingStatusReport, setPendingStatusReport] = useState<any>(null);
+
+  useEffect(() => {
+    if (!user || !profile) return;
+    
+    // Check for rides/requests that need status report
+    const checkPendingReports = async () => {
+      const collections: ('rides' | 'rideRequests')[] = ['rides', 'rideRequests'];
+      const userIdField = profile.role === 'driver' ? 'driverId' : 'passengerId';
+      
+      for (const coll of collections) {
+        const q = query(
+          collection(db, coll),
+          where(userIdField, '==', user.uid),
+          where('finalStatus', '==', 'pending')
+        );
+        
+        const snap = await getDoc(doc(db, 'dummy', 'dummy')); // Just to trigger a read check if needed, but we use onSnapshot or getDocs
+        // Actually, we can just use a simple query
+      }
+    };
+    
+    // Listen for pending reports
+    const colls: ('rides' | 'rideRequests')[] = ['rides', 'rideRequests'];
+    const userIdField = profile.role === 'driver' ? 'driverId' : 'passengerId';
+    
+    const unsubs = colls.map(coll => {
+      const q = query(
+        collection(db, coll),
+        where(userIdField, '==', user.uid),
+        where('finalStatus', '==', 'pending')
+      );
+      
+      return onSnapshot(q, (snap) => {
+        if (!snap.empty) {
+          const doc = snap.docs[0];
+          const data = doc.data();
+          // Check if date is past
+          const rideDate = new Date(data.date);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          
+          if (rideDate <= today) {
+            setPendingStatusReport({ id: doc.id, collection: coll, ...data });
+          }
+        }
+      });
+    });
+
+    return () => unsubs.forEach(unsub => unsub());
+  }, [user, profile]);
 
   const setView = (newView: any, item?: any) => {
     if (item) setSelectedItem(item);
@@ -396,6 +460,16 @@ export default function App() {
       const today = format(new Date(), 'yyyy-MM-dd');
       const analyticsRef = doc(db, 'analytics', today);
       try {
+        // Test connection first
+        try {
+          await getDocFromServer(doc(db, 'test', 'connection'));
+        } catch (e) {
+          if (e instanceof Error && e.message.includes('the client is offline')) {
+            console.warn("Firestore is offline, skipping visit tracking.");
+            return;
+          }
+        }
+
         const docSnap = await getDoc(analyticsRef);
         if (docSnap.exists()) {
           await updateDoc(analyticsRef, { visits: increment(1) });
@@ -416,13 +490,13 @@ export default function App() {
       case 'main':
         return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} />;
       case 'register':
-        return <RegistrationForm user={user} role={profile?.role || 'passenger'} setView={setView} setProfile={setProfile} />;
+        return <RegistrationForm user={user} role={(profile?.role as 'driver' | 'passenger') || 'passenger'} setView={setView} setProfile={setProfile} />;
       case 'dashboard':
         return <Dashboard user={user} profile={profile} setView={setView} />;
       case 'post':
         return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} />;
       case 'search':
-        return <RouteSearch setView={setView} userRole={profile?.role || 'passenger'} onWhatsAppClick={setWaModalData} />;
+        return <RouteSearch setView={setView} userRole={(profile?.role as 'driver' | 'passenger') || 'passenger'} onWhatsAppClick={setWaModalData} />;
       case 'profile_view':
         return <DetailedProfileView item={selectedItem} setView={setView} onWhatsAppClick={setWaModalData} />;
       case 'chat':
@@ -471,6 +545,12 @@ export default function App() {
         <ComplaintReplyModal complaint={activeComplaintReply} onClose={() => setActiveComplaintReply(null)} />
       )}
 
+      {pendingStatusReport && (
+        <RideStatusPromptModal 
+          item={pendingStatusReport} 
+          onClose={() => setPendingStatusReport(null)} 
+        />
+      )}
       {waModalData && (
         <WhatsAppConfirmationModal 
           item={waModalData} 
@@ -505,7 +585,7 @@ export default function App() {
   );
 }
 
-function Header({ user, setView, onSignInClick, onInstall }: { user: User | null, setView: (v: any) => void, onSignInClick: () => void, onInstall?: () => void }) {
+function Header({ user, setView, onSignInClick, onInstall }: { user: User | null, setView: (v: any, item?: any) => void, onSignInClick: () => void, onInstall?: () => void }) {
   return (
     <header className="bg-white border-b sticky top-0 z-50 shadow-sm">
       <div className="px-4 py-3 flex items-center justify-between">
@@ -611,7 +691,7 @@ function Header({ user, setView, onSignInClick, onInstall }: { user: User | null
   );
 }
 
-function MainPage({ setView, setProfile, user, profile }: { setView: (v: any) => void, setProfile: (p: any) => void, user: User | null, profile: UserProfile | null }) {
+function MainPage({ setView, setProfile, user, profile }: { setView: (v: any, item?: any) => void, setProfile: (p: any) => void, user: User | null, profile: UserProfile | null }) {
   const handleRoleSelection = async (role: 'driver' | 'passenger') => {
     // If user is already logged in, update their role in the profile
     if (user && profile) {
@@ -641,18 +721,21 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any) =>
           animate={{ y: 0, opacity: 1 }}
           className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight flex flex-col items-center"
         >
-          <span>EasyTravel me</span>
-          <span className="text-blue-600">Khush Amdeed!</span>
+          <span><span className="text-pink-700">EasyTravel</span> me</span>
+          <span className="text-emerald-600">Khush Amdeed!</span>
         </motion.h2>
-        <div className="space-y-3 max-w-2xl mx-auto px-4 pt-4">
+        <div className="space-y-4 max-w-2xl mx-auto px-4 pt-4 font-outfit">
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-blue-50/50 border border-blue-100/50 py-2 px-4 rounded-full inline-block"
+            className="bg-blue-50/80 border border-blue-100 py-4 px-6 rounded-2xl shadow-sm"
           >
-            <p className="text-sm md:text-base font-bold text-blue-700 tracking-wide">
-              Hamaara Maqsad - Apke Safar ko Asaan Banana
+            <p className="text-base md:text-lg font-bold text-slate-800 tracking-tight">
+              <span className="font-black text-blue-600">Passenger</span> ho ya <span className="font-black text-blue-600">Car Owner</span> - Ab Apka Safar ' Hamari Zimedaari
+            </p>
+            <p className="text-[11px] md:text-sm font-bold text-slate-500 mt-2 whitespace-nowrap overflow-hidden text-ellipsis">
+              Fauri Raabta - Araam Deh Safar - Kam Kharcha
             </p>
           </motion.div>
 
@@ -660,10 +743,10 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any) =>
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-slate-100/50 border border-slate-200/50 py-2 px-6 rounded-xl"
+            className="bg-slate-50 border border-slate-200 py-3 px-6 rounded-xl"
           >
-            <p className="text-base md:text-lg font-semibold text-slate-700">
-              Ab Karak se ya Kesi bhi Shehar se - Safar hua Bahut Asaan
+            <p className="text-sm md:text-base font-semibold text-slate-600 leading-relaxed">
+              <span className="font-black text-slate-900">Car Owner</span> k pas Seats Khaali hain ? - Aur - <span className="font-black text-slate-900">Passenger</span> Kharab Transport System se Pareshaan hai ?
             </p>
           </motion.div>
 
@@ -671,10 +754,10 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any) =>
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="bg-emerald-50/30 border border-emerald-100/20 py-3 px-6 rounded-2xl"
+            className="bg-emerald-50/40 border border-emerald-100/30 py-4 px-6 rounded-2xl"
           >
-            <p className="text-sm md:text-base text-slate-500 font-medium leading-relaxed">
-              Passenger ho ya Car Owner - Kesi bhi waqt safar karen Entehaai Araam aur Kam Kharchay k Saath
+            <p className="text-sm md:text-base text-slate-600 font-medium leading-relaxed">
+              Abhi <span className="font-bold text-emerald-700">EasyTravel</span> pe Search Karen ya Post Lagayen - <span className="font-black text-emerald-800">Car Owner</span> apna Fuel ka Kharcha Bachaaen - <span className="font-black text-emerald-800">Passenger</span> apna Safar Araam Deh Banaaen
             </p>
           </motion.div>
         </div>
@@ -731,7 +814,7 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any) =>
   );
 }
 
-function RegistrationForm({ user, role: initialRole, setView, setProfile, onClose }: { user: User | null, role: 'driver' | 'passenger', setView: (v: any) => void, setProfile: (p: any) => void, onClose?: () => void }) {
+function RegistrationForm({ user, role: initialRole, setView, setProfile, onClose }: { user: User | null, role: 'driver' | 'passenger', setView: (v: any, item?: any) => void, setProfile: (p: any) => void, onClose?: () => void }) {
   const [step, setStep] = useState(user ? 2 : 1);
   const [selectedRole, setSelectedRole] = useState<'driver' | 'passenger'>(initialRole);
   const [formData, setFormData] = useState({
@@ -881,7 +964,7 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
   );
 }
 
-function ComplaintForm({ user, profile, setView }: { user: User | null, profile: UserProfile | null, setView: (v: any) => void }) {
+function ComplaintForm({ user, profile, setView }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void }) {
   const [formData, setFormData] = useState({
     subject: '',
     description: ''
@@ -984,7 +1067,7 @@ function ComplaintForm({ user, profile, setView }: { user: User | null, profile:
   );
 }
 
-function EditProfile({ user, profile, setView, setProfile }: { user: User | null, profile: UserProfile | null, setView: (v: any) => void, setProfile: (p: any) => void }) {
+function EditProfile({ user, profile, setView, setProfile }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, setProfile: (p: any) => void }) {
   const [formData, setFormData] = useState({
     displayName: profile?.displayName || '',
     phoneNumber: profile?.phoneNumber || '',
@@ -1106,7 +1189,7 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
   );
 }
 
-function Dashboard({ user, profile, setView }: { user: User | null, profile: UserProfile | null, setView: (v: any) => void }) {
+function Dashboard({ user, profile, setView }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void }) {
   const userRole = profile?.role || 'passenger';
   return (
     <div className="space-y-6 py-4">
@@ -1136,7 +1219,7 @@ function Dashboard({ user, profile, setView }: { user: User | null, profile: Use
           <div className="bg-white/20 p-2 rounded-xl">
             <Plus className="w-7 h-7" />
           </div>
-          {userRole === 'driver' ? 'Naya Post Lagayen' : 'Naya Add Lagayen'}
+          {userRole === 'driver' ? 'Naya Post Lagayen' : 'Naya Post Lagayen'}
         </Button>
         <Button 
           className="h-24 text-xl gap-4 bg-emerald-600 hover:bg-emerald-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
@@ -1155,7 +1238,7 @@ function Dashboard({ user, profile, setView }: { user: User | null, profile: Use
             <div className="bg-white/20 p-2 rounded-xl">
               <Car className="w-7 h-7" />
             </div>
-            Mere Posts (My Rides)
+            Mere Posts
           </Button>
         )}
         {userRole === 'passenger' && (
@@ -1166,7 +1249,7 @@ function Dashboard({ user, profile, setView }: { user: User | null, profile: Use
             <div className="bg-white/20 p-2 rounded-xl">
               <UserIcon className="w-7 h-7" />
             </div>
-            Mere Adds (My Requests)
+            Mere Posts
           </Button>
         )}
         <Button 
@@ -1299,9 +1382,21 @@ function RouteSearch({ setView, userRole, onWhatsAppClick }: { setView: (v: any,
                   </div>
                 </CardHeader>
                 <CardFooter className="p-2 bg-slate-50 flex gap-2">
-                  <Button variant="ghost" size="sm" className="flex-1 gap-1" onClick={(e) => { e.stopPropagation(); window.open(`tel:${item.whatsappNumber}`, '_self'); }}><Phone className="w-3 h-3" /> Call</Button>
-                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-green-600" onClick={(e) => { e.stopPropagation(); onWhatsAppClick(item); }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
-                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-blue-600" onClick={(e) => { e.stopPropagation(); setView('chat', item); }}><MessageSquare className="w-3 h-3" /> Chat</Button>
+                  <Button variant="ghost" size="sm" className="flex-1 gap-1" onClick={(e) => { 
+                    e.stopPropagation(); 
+                    trackInteraction(item.id, 'call', userRole === 'driver' ? 'rideRequests' : 'rides');
+                    window.open(`tel:${item.whatsappNumber}`, '_self'); 
+                  }}><Phone className="w-3 h-3" /> Call</Button>
+                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-green-600" onClick={(e) => { 
+                    e.stopPropagation(); 
+                    trackInteraction(item.id, 'whatsapp', userRole === 'driver' ? 'rideRequests' : 'rides');
+                    onWhatsAppClick(item); 
+                  }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
+                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-blue-600" onClick={(e) => { 
+                    e.stopPropagation(); 
+                    trackInteraction(item.id, 'chat', userRole === 'driver' ? 'rideRequests' : 'rides');
+                    setView('chat', item); 
+                  }}><MessageSquare className="w-3 h-3" /> Chat</Button>
                 </CardFooter>
               </Card>
             ))
@@ -1312,7 +1407,7 @@ function RouteSearch({ setView, userRole, onWhatsAppClick }: { setView: (v: any,
   );
 }
 
-const AnimatedFooter = memo(function AnimatedFooter({ setView }: { setView: (v: any) => void }) {
+const AnimatedFooter = memo(function AnimatedFooter({ setView }: { setView: (v: any, item?: any) => void }) {
   return (
     <footer className="bg-white border-t pt-8 pb-6 overflow-hidden relative">
       <div className="max-w-4xl mx-auto px-4 relative">
@@ -1425,7 +1520,7 @@ function LoadingSpinner() {
   );
 }
 
-function PostForm({ user, profile, setView, type }: { user: User | null, profile: UserProfile | null, setView: (v: any) => void, type: 'ride' | 'request' }) {
+function PostForm({ user, profile, setView, type }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, type: 'ride' | 'request' }) {
   const [formData, setFormData] = useState({
     origin: '',
     destination: '',
@@ -1459,6 +1554,7 @@ function PostForm({ user, profile, setView, type }: { user: User | null, profile
         availableSeats: parseInt(formData.seats),
         price: parseInt(formData.price),
         status: 'available',
+        finalStatus: 'pending',
         createdAt: serverTimestamp()
       } : {
         passengerId: user.uid,
@@ -1472,6 +1568,7 @@ function PostForm({ user, profile, setView, type }: { user: User | null, profile
         day: formData.day,
         time: formData.time,
         status: 'pending',
+        finalStatus: 'pending',
         createdAt: serverTimestamp()
       };
 
@@ -1488,7 +1585,7 @@ function PostForm({ user, profile, setView, type }: { user: User | null, profile
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Button variant="ghost" size="icon" onClick={() => setView('dashboard')}><Navigation className="rotate-180" /></Button>
-          {type === 'ride' ? 'Naya Post Lagayen' : 'Naya Add Lagayen'}
+          {type === 'ride' ? 'Naya Post Lagayen' : 'Naya Post Lagayen'}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -1551,49 +1648,87 @@ function PostForm({ user, profile, setView, type }: { user: User | null, profile
   );
 }
 
-function DetailedProfileView({ item, setView, onWhatsAppClick }: { item: any, setView: (v: any) => void, onWhatsAppClick: (item: any) => void }) {
+function DetailedProfileView({ item, setView, onWhatsAppClick }: { item: any, setView: (v: any, item?: any) => void, onWhatsAppClick: (item: any) => void }) {
   if (!item) return null;
+  const isUserProfile = !!item.uid;
+  const name = isUserProfile ? item.displayName : (item.driverName || item.passengerName);
+  const photo = isUserProfile ? item.photoURL : (item.driverPhoto || item.passengerPhoto);
+  const role = isUserProfile ? item.role : (item.driverId ? 'driver' : 'passenger');
+
   return (
     <Card className="max-w-md mx-auto">
       <CardHeader className="text-center">
         <div className="flex justify-start mb-4">
-          <Button variant="ghost" size="icon" onClick={() => setView('search')}><Navigation className="rotate-180" /></Button>
+          <Button variant="ghost" size="icon" onClick={() => setView(isUserProfile ? 'admin_dashboard' : 'search')}><Navigation className="rotate-180" /></Button>
         </div>
         <Avatar className="w-24 h-24 mx-auto border-4 border-blue-100 mb-4">
-          <AvatarImage src={item.driverPhoto || item.passengerPhoto} />
+          <AvatarImage src={photo} />
           <AvatarFallback>U</AvatarFallback>
         </Avatar>
-        <CardTitle className="text-2xl">{item.driverName || item.passengerName}</CardTitle>
-        <CardDescription>{item.origin} se {item.destination}</CardDescription>
+        <CardTitle className="text-2xl">{name}</CardTitle>
+        {isUserProfile ? (
+          <Badge className="mt-1 capitalize">{role}</Badge>
+        ) : (
+          <CardDescription>{item.origin} se {item.destination}</CardDescription>
+        )}
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="bg-slate-50 p-4 rounded-xl space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Tareekh:</span>
-            <span className="font-medium">{item.date} ({item.day})</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Waqt:</span>
-            <span className="font-medium">{item.time}</span>
-          </div>
-          {item.price && (
+        {!isUserProfile ? (
+          <div className="bg-slate-50 p-4 rounded-xl space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Karaaya:</span>
-              <span className="font-bold text-blue-600">Rs. {item.price}</span>
+              <span className="text-slate-500">Tareekh:</span>
+              <span className="font-medium">{item.date} ({item.day})</span>
             </div>
-          )}
-        </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Waqt:</span>
+              <span className="font-medium">{item.time}</span>
+            </div>
+            {item.price && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Karaaya:</span>
+                <span className="font-bold text-blue-600">Rs. {item.price}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 text-slate-600">
+              <Phone className="w-5 h-5 text-blue-500" />
+              <span>{item.phoneNumber || 'No Phone'}</span>
+            </div>
+            <div className="flex items-center gap-3 text-slate-600">
+              <MessageCircle className="w-5 h-5 text-green-500" />
+              <span>{item.whatsappNumber || 'No WhatsApp'}</span>
+            </div>
+            {item.bio && (
+              <div className="pt-4 border-t">
+                <p className="text-sm text-slate-500 italic">"{item.bio}"</p>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-3">
-          <Button className="w-full gap-2 py-6 text-lg bg-blue-600" onClick={() => window.open(`tel:${item.whatsappNumber}`, '_self')}>
+          <Button className="w-full gap-2 py-6 text-lg bg-blue-600" onClick={() => {
+            if (!isUserProfile) trackInteraction(item.id, 'call', item.driverId ? 'rides' : 'rideRequests');
+            window.open(`tel:${item.whatsappNumber}`, '_self');
+          }}>
             <Phone className="w-5 h-5" /> Call Karein
           </Button>
-          <Button className="w-full gap-2 py-6 text-lg bg-green-600 hover:bg-green-700" onClick={() => onWhatsAppClick(item)}>
+          <Button className="w-full gap-2 py-6 text-lg bg-green-600 hover:bg-green-700" onClick={() => {
+            if (!isUserProfile) trackInteraction(item.id, 'whatsapp', item.driverId ? 'rides' : 'rideRequests');
+            onWhatsAppClick(item);
+          }}>
             <MessageCircle className="w-5 h-5" /> WhatsApp Karein
           </Button>
-          <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-blue-200 text-blue-700" onClick={() => setView('chat')}>
-            <MessageSquare className="w-5 h-5" /> In-App Chat
-          </Button>
+          {!isUserProfile && (
+            <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-blue-200 text-blue-700" onClick={() => {
+              trackInteraction(item.id, 'chat', item.driverId ? 'rides' : 'rideRequests');
+              setView('chat');
+            }}>
+              <MessageSquare className="w-5 h-5" /> In-App Chat
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -1854,7 +1989,7 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function MyRides({ user, setView }: { user: User | null, setView: (v: any) => void }) {
+function MyRides({ user, setView }: { user: User | null, setView: (v: any, item?: any) => void }) {
   const [myRides, setMyRides] = useState<Ride[]>([]);
   const [filter, setFilter] = useState<string>('all');
 
@@ -1882,6 +2017,18 @@ function MyRides({ user, setView }: { user: User | null, setView: (v: any) => vo
       toast.success('Status update ho gaya!');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `rides/${rideId}`);
+    }
+  };
+
+  const markAsDone = async (rideId: string, collectionName: 'rides' | 'rideRequests') => {
+    try {
+      await updateDoc(doc(db, collectionName, rideId), {
+        finalStatus: 'done',
+        statusReportedAt: serverTimestamp()
+      });
+      toast.success('Ride Done mark ho gayi hai!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `${collectionName}/${rideId}`);
     }
   };
 
@@ -1932,10 +2079,16 @@ function MyRides({ user, setView }: { user: User | null, setView: (v: any) => vo
                   <span className="text-slate-500">Karaaya:</span>
                   <span className="font-bold text-blue-600">Rs. {ride.price}</span>
                 </div>
+                {ride.finalStatus && ride.finalStatus !== 'pending' && (
+                  <div className="mt-2 pt-2 border-t flex justify-between items-center">
+                    <span className="text-xs text-slate-500">Final Status:</span>
+                    <Badge variant="outline" className="capitalize text-[10px]">{ride.finalStatus}</Badge>
+                  </div>
+                )}
               </CardContent>
-              <CardFooter className="p-2 bg-slate-50 flex gap-2">
+              <CardFooter className="p-2 bg-slate-50 flex flex-wrap gap-2">
                 <select 
-                  className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="flex-1 min-w-[120px] h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={ride.status}
                   onChange={(e) => updateStatus(ride.id, e.target.value)}
                 >
@@ -1944,6 +2097,11 @@ function MyRides({ user, setView }: { user: User | null, setView: (v: any) => vo
                   <option value="completed">Completed</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
+                {(!ride.finalStatus || ride.finalStatus === 'pending') && (
+                  <Button size="sm" variant="outline" className="text-green-600 border-green-200 hover:bg-green-50" onClick={() => markAsDone(ride.id, 'rides')}>
+                    Done
+                  </Button>
+                )}
                 <Button variant="destructive" size="sm" onClick={async () => {
                   if (confirm('Kya aap ye post delete karna chahte hain?')) {
                     try {
@@ -1963,7 +2121,7 @@ function MyRides({ user, setView }: { user: User | null, setView: (v: any) => vo
   );
 }
 
-function MyRequests({ user, setView }: { user: User | null, setView: (v: any) => void }) {
+function MyRequests({ user, setView }: { user: User | null, setView: (v: any, item?: any) => void }) {
   const [myRequests, setMyRequests] = useState<RideRequest[]>([]);
   const [filter, setFilter] = useState<string>('all');
 
@@ -1991,6 +2149,18 @@ function MyRequests({ user, setView }: { user: User | null, setView: (v: any) =>
       toast.success('Status update ho gaya!');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `rideRequests/${requestId}`);
+    }
+  };
+
+  const markAsDone = async (requestId: string, collectionName: 'rides' | 'rideRequests') => {
+    try {
+      await updateDoc(doc(db, collectionName, requestId), {
+        finalStatus: 'done',
+        statusReportedAt: serverTimestamp()
+      });
+      toast.success('Request Done mark ho gayi hai!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `${collectionName}/${requestId}`);
     }
   };
 
@@ -2032,9 +2202,17 @@ function MyRequests({ user, setView }: { user: User | null, setView: (v: any) =>
                   </Badge>
                 </div>
               </CardHeader>
-              <CardFooter className="p-2 bg-slate-50 flex gap-2">
+              <CardContent className="p-4 pt-0 text-sm space-y-2">
+                {req.finalStatus && req.finalStatus !== 'pending' && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-slate-500">Final Status:</span>
+                    <Badge variant="outline" className="capitalize text-[10px]">{req.finalStatus}</Badge>
+                  </div>
+                )}
+              </CardContent>
+              <CardFooter className="p-2 bg-slate-50 flex flex-wrap gap-2">
                 <select 
-                  className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="flex-1 min-w-[120px] h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={req.status}
                   onChange={(e) => updateStatus(req.id, e.target.value)}
                 >
@@ -2042,6 +2220,11 @@ function MyRequests({ user, setView }: { user: User | null, setView: (v: any) =>
                   <option value="matched">Matched</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
+                {(!req.finalStatus || req.finalStatus === 'pending') && (
+                  <Button size="sm" variant="outline" className="text-green-600 border-green-200 hover:bg-green-50" onClick={() => markAsDone(req.id, 'rideRequests')}>
+                    Done
+                  </Button>
+                )}
                 <Button variant="destructive" size="sm" onClick={async () => {
                   if (confirm('Kya aap ye add delete karna chahte hain?')) {
                     try {
@@ -2070,7 +2253,7 @@ function AIChat() {
   );
 }
 
-function AdminDashboard({ setView }: { setView: (v: any) => void }) {
+function AdminDashboard({ setView }: { setView: (v: any, item?: any) => void }) {
   const [stats, setStats] = useState({
     drivers: 0,
     passengers: 0,
@@ -2084,6 +2267,9 @@ function AdminDashboard({ setView }: { setView: (v: any) => void }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedUserForWarning, setSelectedUserForWarning] = useState<UserProfile | null>(null);
   const [selectedComplaintForReply, setSelectedComplaintForReply] = useState<Complaint | null>(null);
+
+  const [allRides, setAllRides] = useState<Ride[]>([]);
+  const [allRequests, setAllRequests] = useState<RideRequest[]>([]);
 
   useEffect(() => {
     // Real-time stats and lists
@@ -2101,8 +2287,14 @@ function AdminDashboard({ setView }: { setView: (v: any) => void }) {
     });
     const unsubRides = onSnapshot(collection(db, 'rides'), (snap) => {
       setStats(prev => ({ ...prev, rides: snap.size }));
+      setAllRides(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ride)));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'rides');
+    });
+    const unsubRequests = onSnapshot(collection(db, 'rideRequests'), (snap) => {
+      setAllRequests(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RideRequest)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'rideRequests');
     });
     const unsubComplaintsCount = onSnapshot(collection(db, 'complaints'), (snap) => {
       setStats(prev => ({ ...prev, complaints: snap.size }));
@@ -2124,6 +2316,7 @@ function AdminDashboard({ setView }: { setView: (v: any) => void }) {
       unsubDrivers();
       unsubPassengers();
       unsubRides();
+      unsubRequests();
       unsubComplaintsCount();
       unsubVisits();
     };
@@ -2173,17 +2366,18 @@ function AdminDashboard({ setView }: { setView: (v: any) => void }) {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <StatCard title="Car Owners" value={stats.drivers} icon={<Car className="w-5 h-5" />} color="bg-blue-500" onClick={() => setActiveTab('drivers')} />
         <StatCard title="Passengers" value={stats.passengers} icon={<Users className="w-5 h-5" />} color="bg-orange-500" onClick={() => setActiveTab('passengers')} />
-        <StatCard title="Total Rides" value={stats.rides} icon={<Navigation className="w-5 h-5" />} color="bg-emerald-500" />
+        <StatCard title="Total Rides" value={stats.rides} icon={<Navigation className="w-5 h-5" />} color="bg-emerald-500" onClick={() => setActiveTab('rides')} />
         <StatCard title="Complaints" value={stats.complaints} icon={<AlertCircle className="w-5 h-5" />} color="bg-rose-500" onClick={() => setActiveTab('complaints')} />
         <StatCard title="Today Visits" value={stats.visits} icon={<Eye className="w-5 h-5" />} color="bg-indigo-500" />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="drivers">Car Owners</TabsTrigger>
-          <TabsTrigger value="passengers">Passengers</TabsTrigger>
-          <TabsTrigger value="complaints">Complaints</TabsTrigger>
+          <TabsTrigger value="drivers">Owners</TabsTrigger>
+          <TabsTrigger value="passengers">Pass.</TabsTrigger>
+          <TabsTrigger value="rides">Rides</TabsTrigger>
+          <TabsTrigger value="complaints">Compl.</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-4">
           <Card>
@@ -2211,11 +2405,24 @@ function AdminDashboard({ setView }: { setView: (v: any) => void }) {
         </TabsContent>
 
         <TabsContent value="drivers" className="mt-4">
-          <UserList users={drivers} onWarning={issueWarning} onDelete={deleteAccount} />
+          <UserList users={drivers} onWarning={issueWarning} onDelete={deleteAccount} onProfileClick={(u) => setView('profile_view', u)} />
         </TabsContent>
 
         <TabsContent value="passengers" className="mt-4">
-          <UserList users={passengers} onWarning={issueWarning} onDelete={deleteAccount} />
+          <UserList users={passengers} onWarning={issueWarning} onDelete={deleteAccount} onProfileClick={(u) => setView('profile_view', u)} />
+        </TabsContent>
+
+        <TabsContent value="rides" className="mt-4">
+          <div className="space-y-4">
+            <h3 className="font-bold text-lg">Car Owner Posts</h3>
+            {allRides.map(ride => (
+              <AdminRideCard key={ride.id} item={ride} type="ride" />
+            ))}
+            <h3 className="font-bold text-lg mt-8">Passenger Posts</h3>
+            {allRequests.map(req => (
+              <AdminRideCard key={req.id} item={req} type="request" />
+            ))}
+          </div>
         </TabsContent>
 
         <TabsContent value="complaints" className="mt-4">
@@ -2271,7 +2478,7 @@ function AdminDashboard({ setView }: { setView: (v: any) => void }) {
   );
 }
 
-function UserList({ users, onWarning, onDelete }: { users: UserProfile[], onWarning: (u: UserProfile) => void, onDelete: (uid: string) => void }) {
+function UserList({ users, onWarning, onDelete, onProfileClick }: { users: UserProfile[], onWarning: (u: UserProfile) => void, onDelete: (uid: string) => void, onProfileClick: (u: UserProfile) => void }) {
   return (
     <div className="space-y-4">
       {users.length === 0 ? (
@@ -2280,13 +2487,13 @@ function UserList({ users, onWarning, onDelete }: { users: UserProfile[], onWarn
         users.map(u => (
           <Card key={u.uid}>
             <CardContent className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Avatar className="w-10 h-10">
+              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => onProfileClick(u)}>
+                <Avatar className="w-10 h-10 ring-2 ring-transparent group-hover:ring-blue-400 transition-all">
                   <AvatarImage src={u.photoURL} />
                   <AvatarFallback>{u.displayName.charAt(0)}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-bold text-slate-900">{u.displayName}</p>
+                  <p className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{u.displayName}</p>
                   <p className="text-xs text-slate-500 font-mono">{u.customId || 'No ID'}</p>
                 </div>
               </div>
@@ -2302,6 +2509,117 @@ function UserList({ users, onWarning, onDelete }: { users: UserProfile[], onWarn
           </Card>
         ))
       )}
+    </div>
+  );
+}
+
+function AdminRideCard({ item, type }: { item: any, type: 'ride' | 'request' }) {
+  return (
+    <Card className="border-l-4 border-slate-200">
+      <CardHeader className="p-4">
+        <div className="flex justify-between items-start">
+          <div>
+            <CardTitle className="text-base">{item.origin} → {item.destination}</CardTitle>
+            <CardDescription className="text-xs">{item.date} | {item.time}</CardDescription>
+            <p className="text-[10px] text-slate-400 mt-1">By: {item.driverName || item.passengerName}</p>
+          </div>
+          <Badge variant="outline" className="capitalize text-[10px]">
+            {item.finalStatus || 'Pending'}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        <div className="grid grid-cols-3 gap-2 mt-2">
+          <div className="bg-blue-50 p-2 rounded-lg text-center">
+            <p className="text-[10px] text-blue-600 font-bold uppercase">Calls</p>
+            <p className="text-lg font-black text-blue-900">{item.interactions?.call || 0}</p>
+          </div>
+          <div className="bg-green-50 p-2 rounded-lg text-center">
+            <p className="text-[10px] text-green-600 font-bold uppercase">WA</p>
+            <p className="text-lg font-black text-green-900">{item.interactions?.whatsapp || 0}</p>
+          </div>
+          <div className="bg-indigo-50 p-2 rounded-lg text-center">
+            <p className="text-[10px] text-indigo-600 font-bold uppercase">Chat</p>
+            <p className="text-lg font-black text-indigo-900">{item.interactions?.chat || 0}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RideStatusPromptModal({ item, onClose }: { item: any, onClose: () => void }) {
+  const [loading, setLoading] = useState(false);
+
+  const reportStatus = async (status: 'done' | 'cancelled' | 'late') => {
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, item.collection, item.id), {
+        finalStatus: status,
+        statusReportedAt: serverTimestamp()
+      });
+      toast.success('Shukriya! Status record ho gaya hai.');
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `${item.collection}/${item.id}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        className="w-full max-w-sm bg-white rounded-[2rem] shadow-2xl overflow-hidden"
+      >
+        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white text-center">
+          <div className="bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+            <Sparkles className="w-8 h-8 text-white" />
+          </div>
+          <h3 className="text-2xl font-black mb-2">Safar Kaisa Raha?</h3>
+          <p className="text-blue-100 text-sm">Aapki ride ka waqt guzar chuka hai. Baraye meherbani status batayein:</p>
+        </div>
+        
+        <div className="p-6 space-y-4">
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4">
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Ride Details</p>
+            <p className="font-bold text-slate-800">{item.origin} se {item.destination}</p>
+            <p className="text-xs text-slate-500">{item.date} | {item.time}</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <Button 
+              disabled={loading}
+              onClick={() => reportStatus('done')}
+              className="h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-lg font-bold gap-3 shadow-lg shadow-emerald-100"
+            >
+              <ShieldCheck className="w-5 h-5" /> Done (Mukammal)
+            </Button>
+            <Button 
+              disabled={loading}
+              variant="outline"
+              onClick={() => reportStatus('late')}
+              className="h-14 rounded-2xl border-2 border-amber-200 text-amber-700 hover:bg-amber-50 text-lg font-bold gap-3"
+            >
+              <Clock className="w-5 h-5" /> Late (Taukheer)
+            </Button>
+            <Button 
+              disabled={loading}
+              variant="outline"
+              onClick={() => reportStatus('cancelled')}
+              className="h-14 rounded-2xl border-2 border-rose-200 text-rose-700 hover:bg-rose-50 text-lg font-bold gap-3"
+            >
+              <AlertCircle className="w-5 h-5" /> Cancelled (Khatam)
+            </Button>
+          </div>
+        </div>
+        
+        <div className="p-4 text-center border-t bg-slate-50">
+          <p className="text-[10px] text-slate-400 font-medium">EasyTravel - Apka Safar, Hamari Zimadari</p>
+        </div>
+      </motion.div>
     </div>
   );
 }
@@ -2660,7 +2978,22 @@ function WhatsAppConfirmationModal({ item, user, profile, onClose }: { item: any
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-blue-600">Karaaya</Label>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1">
+                    <Label className="text-xs font-bold text-blue-600">Karaaya</Label>
+                    <Popover>
+                      <PopoverTrigger className="text-slate-400 hover:text-blue-600 transition-colors">
+                        <Info className="w-3 h-3" />
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80 p-4 bg-white shadow-xl border-slate-200 rounded-xl">
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                          Karaaya entehaai munaasib rakhen, Ziaada karaaya na rakhen takeh ksi bhi qisam k maslay/tanaazay se bacha ja sakay
+                        </p>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <span className="font-normal text-[0.60rem] text-slate-500 leading-none">(Entehaai Munaasib Karaaya Rakhen)</span>
+                </div>
                 <Input 
                   placeholder="e.g. 500" 
                   value={formData.price}

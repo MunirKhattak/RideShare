@@ -107,18 +107,20 @@ service cloud.firestore {
 
     function isValidRide(data) {
       return hasRequiredFields(['driverId', 'driverName', 'origin', 'destination', 'date', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'createdAt']) &&
-             hasOnlyAllowedFields(['driverId', 'driverName', 'driverPhoto', 'phoneNumber', 'whatsappNumber', 'origin', 'destination', 'date', 'day', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'createdAt']) &&
+             hasOnlyAllowedFields(['driverId', 'driverName', 'driverPhoto', 'phoneNumber', 'whatsappNumber', 'origin', 'destination', 'date', 'day', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'finalStatus', 'interactions', 'statusReportedAt', 'createdAt']) &&
              data.driverId == request.auth.uid &&
              data.availableSeats is number && data.availableSeats >= 0 &&
              data.price is number && data.price >= 0 &&
-             data.status in ['available', 'full', 'completed', 'cancelled'];
+             data.status in ['available', 'full', 'completed', 'cancelled'] &&
+             (!('finalStatus' in data) || data.finalStatus in ['pending', 'done', 'cancelled', 'late']);
     }
 
     function isValidRideRequest(data) {
       return hasRequiredFields(['passengerId', 'passengerName', 'origin', 'destination', 'date', 'time', 'status', 'createdAt']) &&
-             hasOnlyAllowedFields(['passengerId', 'passengerName', 'passengerPhoto', 'phoneNumber', 'whatsappNumber', 'origin', 'destination', 'date', 'day', 'time', 'status', 'createdAt']) &&
+             hasOnlyAllowedFields(['passengerId', 'passengerName', 'passengerPhoto', 'phoneNumber', 'whatsappNumber', 'origin', 'destination', 'date', 'day', 'time', 'status', 'finalStatus', 'interactions', 'statusReportedAt', 'createdAt']) &&
              data.passengerId == request.auth.uid &&
-             data.status in ['pending', 'matched', 'cancelled'];
+             data.status in ['pending', 'matched', 'cancelled'] &&
+             (!('finalStatus' in data) || data.finalStatus in ['pending', 'done', 'cancelled', 'late']);
     }
 
     function isValidMessage(data) {
