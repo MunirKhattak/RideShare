@@ -603,12 +603,23 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
     try {
       const result = await signInWithGoogle();
       if (result) {
-        setFormData(prev => ({
-          ...prev,
-          displayName: result.displayName || '',
-          photoURL: result.photoURL || ''
-        }));
-        setStep(2);
+        // Check if user profile already exists
+        const userDoc = await getDoc(doc(db, 'users', result.uid));
+        if (userDoc.exists()) {
+          // Profile exists, just go to dashboard
+          const p = userDoc.data() as UserProfile;
+          setProfile(p);
+          setView('dashboard');
+          if (onClose) onClose();
+        } else {
+          // Profile doesn't exist, proceed to completion
+          setFormData(prev => ({
+            ...prev,
+            displayName: result.displayName || '',
+            photoURL: result.photoURL || ''
+          }));
+          setStep(2);
+        }
       }
     } catch (error) {
       toast.error(`Sign in fail ho gaya: ${error instanceof Error ? error.message : String(error)}`);
@@ -621,8 +632,8 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
     
     // Phone number validation: 03 followed by 9 digits
     const phoneRegex = /^03\d{9}$/;
-    if (!phoneRegex.test(formData.phoneNumber) || !phoneRegex.test(formData.whatsappNumber)) {
-      toast.error('Phone number aur WhatsApp number 03 se shuru hona chahiye aur 11 digits ka hona chahiye (e.g., 03001234567)');
+    if (!phoneRegex.test(formData.whatsappNumber)) {
+      toast.error('WhatsApp number 03 se shuru hona chahiye aur 11 digits ka hona chahiye (e.g., 03001234567)');
       return;
     }
 
@@ -634,7 +645,7 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
         displayName: formData.displayName,
         email: user.email || '',
         photoURL: formData.photoURL,
-        phoneNumber: formData.phoneNumber,
+        phoneNumber: formData.whatsappNumber, // Use WhatsApp number as phone number
         whatsappNumber: formData.whatsappNumber,
         role: selectedRole,
         createdAt: serverTimestamp(),
@@ -643,6 +654,7 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
       setProfile(newProfile);
       toast.success(`Registration mukammal ho gayi! Aap ki ID: ${customId}`);
       setView('dashboard');
+      if (onClose) onClose();
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'users');
     }
@@ -695,11 +707,7 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
           </div>
           <div className="space-y-2">
             <Label>WhatsApp Number</Label>
-            <Input placeholder="+92..." value={formData.whatsappNumber} onChange={e => setFormData({...formData, whatsappNumber: e.target.value})} required />
-          </div>
-          <div className="space-y-2">
-            <Label>Phone Number</Label>
-            <Input placeholder="+92..." value={formData.phoneNumber} onChange={e => setFormData({...formData, phoneNumber: e.target.value})} required />
+            <Input placeholder="03xx-xxxxxxx" value={formData.whatsappNumber} onChange={e => setFormData({...formData, whatsappNumber: e.target.value})} required />
           </div>
           <div className="space-y-3">
             <Label className="text-base font-bold">Apna Status Bataen</Label>
@@ -849,8 +857,8 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
     
     // Phone number validation: 03 followed by 9 digits
     const phoneRegex = /^03\d{9}$/;
-    if (!phoneRegex.test(formData.phoneNumber) || !phoneRegex.test(formData.whatsappNumber)) {
-      toast.error('Phone number aur WhatsApp number 03 se shuru hona chahiye aur 11 digits ka hona chahiye (e.g., 03001234567)');
+    if (!phoneRegex.test(formData.whatsappNumber)) {
+      toast.error('WhatsApp number 03 se shuru hona chahiye aur 11 digits ka hona chahiye (e.g., 03001234567)');
       return;
     }
 
@@ -859,7 +867,7 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
         ...profile,
         displayName: formData.displayName,
         photoURL: formData.photoURL,
-        phoneNumber: formData.phoneNumber,
+        phoneNumber: formData.whatsappNumber, // Use WhatsApp number as phone number
         whatsappNumber: formData.whatsappNumber,
         bio: formData.bio,
       };
@@ -926,16 +934,7 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
             </div>
 
             <div className="space-y-2">
-              <Label>Phone Number (03xx-xxxxxxx)</Label>
-              <Input 
-                value={formData.phoneNumber} 
-                onChange={e => setFormData({...formData, phoneNumber: e.target.value})} 
-                placeholder="03xx-xxxxxxx"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>WhatsApp Number (03xx-xxxxxxx)</Label>
+              <Label>WhatsApp Number</Label>
               <Input 
                 value={formData.whatsappNumber} 
                 onChange={e => setFormData({...formData, whatsappNumber: e.target.value})} 
@@ -1435,7 +1434,7 @@ function DetailedProfileView({ item, setView }: { item: any, setView: (v: any) =
         </div>
 
         <div className="grid grid-cols-1 gap-3">
-          <Button className="w-full gap-2 py-6 text-lg bg-blue-600" onClick={() => window.open(`tel:${item.phoneNumber}`, '_self')}>
+          <Button className="w-full gap-2 py-6 text-lg bg-blue-600" onClick={() => window.open(`tel:${item.whatsappNumber}`, '_self')}>
             <Phone className="w-5 h-5" /> Call Karein
           </Button>
           <Button className="w-full gap-2 py-6 text-lg bg-green-600 hover:bg-green-700" onClick={() => window.open(`https://wa.me/${item.whatsappNumber?.replace(/\D/g, '')}`, '_blank')}>
