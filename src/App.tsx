@@ -385,7 +385,7 @@ export default function App() {
             >
               <RegistrationForm 
                 user={user} 
-                role={userRole || 'passenger'} 
+                role={'passenger'} 
                 setView={(v) => { setView(v); setShowSignInModal(false); }} 
                 setProfile={(p) => { setProfile(p); setShowSignInModal(false); }}
                 onClose={() => setShowSignInModal(false)}
