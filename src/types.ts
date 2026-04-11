@@ -45,6 +45,7 @@ export interface ChatMessage {
   id: string;
   senderId: string;
   receiverId: string;
+  participants: string[];
   text: string;
   rideId?: string;
   timestamp: any;

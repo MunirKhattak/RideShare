@@ -1,4 +1,4 @@
-import { memo, useState, useEffect } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { auth, db, signInWithGoogle, logout, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
@@ -36,6 +36,7 @@ import {
   MessageSquare, 
   Phone, 
   Navigation, 
+  ArrowLeft,
   Clock, 
   Calendar as CalendarIcon,
   MapPin,
@@ -57,7 +58,7 @@ import { format } from 'date-fns';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'profile_view' | 'chat' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint'>('main');
+  const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint'>('main');
   const [activeWarning, setActiveWarning] = useState<Warning | null>(null);
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -424,6 +425,8 @@ export default function App() {
         return <DetailedProfileView item={selectedItem} setView={setView} />;
       case 'chat':
         return <Chat user={user} item={selectedItem} setView={setView} />;
+      case 'messages':
+        return <Inbox user={user} setView={setView} />;
       case 'my_rides':
         return <MyRides user={user} setView={setView} />;
       case 'my_requests':
@@ -1129,6 +1132,15 @@ function Dashboard({ user, profile, setView }: { user: User | null, profile: Use
             Mere Adds (My Requests)
           </Button>
         )}
+        <Button 
+          className="h-24 text-xl gap-4 bg-blue-600 hover:bg-blue-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+          onClick={() => setView('messages')}
+        >
+          <div className="bg-white/20 p-2 rounded-xl">
+            <MessageSquare className="w-7 h-7" />
+          </div>
+          Messages (Chat)
+        </Button>
       </div>
     </div>
   );
@@ -1551,7 +1563,7 @@ function DetailedProfileView({ item, setView }: { item: any, setView: (v: any) =
   );
 }
 
-function Chat({ user, item, setView }: { user: User | null, item: any, setView: (v: any) => void }) {
+function Chat({ user, item, setView }: { user: User | null, item: any, setView: (v: any, item?: any) => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1563,9 +1575,11 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
   useEffect(() => {
     if (!user || !otherUserId || !item) return;
 
+    // Query messages where this user is a participant and it belongs to this ride
     const q = query(
       collection(db, 'messages'),
       where('rideId', '==', item.id),
+      where('participants', 'array-contains', user.uid),
       orderBy('timestamp', 'asc')
     );
 
@@ -1591,6 +1605,7 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
       await addDoc(collection(db, 'messages'), {
         senderId: user.uid,
         receiverId: otherUserId,
+        participants: [user.uid, otherUserId],
         text: msgText,
         rideId: item.id,
         timestamp: serverTimestamp()
@@ -1603,54 +1618,190 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
   if (!user || !item) return null;
 
   return (
-    <Card className="max-w-md mx-auto h-[80vh] flex flex-col">
-      <CardHeader className="border-b p-4 flex flex-row items-center gap-3 space-y-0">
-        <Button variant="ghost" size="icon" onClick={() => setView('profile_view')}>
+    <Card className="max-w-md mx-auto h-[80vh] flex flex-col shadow-2xl border-none overflow-hidden">
+      <CardHeader className="border-b p-4 flex flex-row items-center gap-3 space-y-0 bg-white">
+        <Button variant="ghost" size="icon" onClick={() => setView('messages')}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <Avatar className="w-10 h-10">
+        <Avatar className="w-10 h-10 border-2 border-blue-100">
           <AvatarImage src={otherUserPhoto} />
           <AvatarFallback>{otherUserName?.charAt(0)}</AvatarFallback>
         </Avatar>
-        <div className="flex-1">
-          <CardTitle className="text-lg">{otherUserName}</CardTitle>
-          <p className="text-xs text-slate-500">{item.origin} to {item.destination}</p>
+        <div className="flex-1 min-w-0">
+          <CardTitle className="text-lg truncate">{otherUserName}</CardTitle>
+          <p className="text-xs text-slate-500 truncate">{item.origin} to {item.destination}</p>
         </div>
       </CardHeader>
       
-      <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
-        {messages.length === 0 ? (
-          <div className="text-center text-slate-500 mt-10">
-            No messages yet. Start the conversation!
-          </div>
-        ) : (
-          messages.map((msg) => {
-            const isMe = msg.senderId === user.uid;
-            return (
-              <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${isMe ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-white border text-slate-800 rounded-tl-sm'}`}>
-                  <p className="text-sm">{msg.text}</p>
-                </div>
+      <CardContent className="flex-1 p-0 bg-slate-50">
+        <ScrollArea className="h-full p-4">
+          <div className="space-y-4">
+            {messages.length === 0 ? (
+              <div className="text-center text-slate-400 mt-10 flex flex-col items-center gap-2">
+                <MessageCircle className="w-12 h-12 opacity-20" />
+                <p>No messages yet. Start the conversation!</p>
               </div>
-            );
-          })
-        )}
-        <div ref={messagesEndRef} />
+            ) : (
+              messages.map((msg) => {
+                const isMe = msg.senderId === user.uid;
+                return (
+                  <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 shadow-sm ${
+                      isMe 
+                        ? 'bg-blue-600 text-white rounded-tr-none' 
+                        : 'bg-white border border-slate-100 text-slate-800 rounded-tl-none'
+                    }`}>
+                      <p className="text-sm leading-relaxed">{msg.text}</p>
+                      <div className={`text-[10px] mt-1 opacity-60 ${isMe ? 'text-right' : 'text-left'}`}>
+                        {msg.timestamp?.toDate ? format(msg.timestamp.toDate(), 'HH:mm') : ''}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
       </CardContent>
 
-      <div className="p-3 border-t bg-white">
+      <div className="p-4 border-t bg-white">
         <form onSubmit={handleSendMessage} className="flex w-full gap-2">
           <Input 
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder="Type a message..."
-            className="flex-1 rounded-full"
+            className="flex-1 rounded-full bg-slate-50 border-none focus-visible:ring-blue-500"
           />
-          <Button type="submit" size="icon" className="rounded-full bg-blue-600 hover:bg-blue-700" disabled={!newMessage.trim()}>
+          <Button type="submit" size="icon" className="rounded-full bg-blue-600 hover:bg-blue-700 transition-all active:scale-90" disabled={!newMessage.trim()}>
             <Send className="w-4 h-4" />
           </Button>
         </form>
       </div>
+    </Card>
+  );
+}
+
+function Inbox({ user, setView }: { user: User | null, setView: (v: any, item?: any) => void }) {
+  const [chats, setChats] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, 'messages'),
+      where('participants', 'array-contains', user.uid),
+      orderBy('timestamp', 'desc')
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const allMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatMessage));
+      
+      const chatMap = new Map();
+      allMessages.forEach(msg => {
+        const otherId = msg.participants.find(p => p !== user.uid);
+        const key = `${msg.rideId}_${otherId}`;
+        if (!chatMap.has(key)) {
+          chatMap.set(key, {
+            lastMessage: msg,
+            otherId,
+            rideId: msg.rideId
+          });
+        }
+      });
+
+      setChats(Array.from(chatMap.values()));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'messages');
+      setLoading(false);
+    });
+
+    return () => unsub();
+  }, [user]);
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-6 max-w-md mx-auto">
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={() => setView('dashboard')}><Navigation className="rotate-180" /></Button>
+        <h2 className="text-2xl font-bold text-slate-900">Messages</h2>
+      </div>
+
+      <div className="space-y-3">
+        {chats.length === 0 ? (
+          <div className="bg-white rounded-2xl p-12 text-center border-2 border-dashed border-slate-100">
+            <MessageSquare className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+            <p className="text-slate-500">Abhi tak koi messages nahi hain.</p>
+            <Button variant="link" className="text-blue-600 mt-2" onClick={() => setView('search')}>
+              Rides dhoonden aur chat shuru karein
+            </Button>
+          </div>
+        ) : (
+          chats.map((chat, idx) => (
+            <ChatListItem key={idx} chat={chat} user={user} setView={setView} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChatListItem({ chat, user, setView }: { chat: any, user: User | null, setView: (v: any, item?: any) => void }) {
+  const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
+  const [ride, setRide] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchDetails = async () => {
+      if (chat.otherId) {
+        const userDoc = await getDoc(doc(db, 'users', chat.otherId));
+        if (userDoc.exists()) setOtherUser(userDoc.data() as UserProfile);
+      }
+      if (chat.rideId) {
+        const rideDoc = await getDoc(doc(db, 'rides', chat.rideId));
+        if (rideDoc.exists()) {
+           setRide({ id: rideDoc.id, ...rideDoc.data() });
+        } else {
+           const reqDoc = await getDoc(doc(db, 'rideRequests', chat.rideId));
+           if (reqDoc.exists()) setRide({ id: reqDoc.id, ...reqDoc.data() });
+        }
+      }
+    };
+    fetchDetails();
+  }, [chat]);
+
+  return (
+    <Card 
+      className="hover:bg-blue-50/50 cursor-pointer transition-all border-none shadow-sm hover:shadow-md active:scale-[0.98]" 
+      onClick={() => setView('chat', ride)}
+    >
+      <CardContent className="p-4 flex items-center gap-4">
+        <Avatar className="w-14 h-14 border-2 border-white shadow-sm">
+          <AvatarImage src={otherUser?.photoURL} />
+          <AvatarFallback className="bg-blue-100 text-blue-600 font-bold">
+            {otherUser?.displayName?.charAt(0) || 'U'}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-baseline mb-1">
+            <h4 className="font-bold text-slate-900 truncate">{otherUser?.displayName || 'Loading...'}</h4>
+            <span className="text-[10px] text-slate-400 font-medium">
+              {chat.lastMessage.timestamp?.toDate ? format(chat.lastMessage.timestamp.toDate(), 'HH:mm') : ''}
+            </span>
+          </div>
+          <p className="text-sm text-slate-500 truncate mb-2">{chat.lastMessage.text}</p>
+          {ride && (
+            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 rounded-full">
+              <Car className="w-3 h-3 text-blue-500" />
+              <span className="text-[10px] text-blue-700 font-semibold uppercase tracking-wider">
+                {ride.origin} → {ride.destination}
+              </span>
+            </div>
+          )}
+        </div>
+      </CardContent>
     </Card>
   );
 }

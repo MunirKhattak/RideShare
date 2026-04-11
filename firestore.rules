@@ -122,8 +122,10 @@ service cloud.firestore {
     }
 
     function isValidMessage(data) {
-      return hasRequiredFields(['senderId', 'receiverId', 'text', 'timestamp']) &&
+      return hasRequiredFields(['senderId', 'receiverId', 'participants', 'text', 'timestamp']) &&
              data.senderId == request.auth.uid &&
+             data.participants is list && data.participants.size() == 2 &&
+             request.auth.uid in data.participants &&
              data.text is string && data.text.size() > 0 && data.text.size() <= 1000;
     }
 
@@ -169,7 +171,7 @@ service cloud.firestore {
     }
 
     match /messages/{messageId} {
-      allow read: if isAuthenticated() && (resource.data.receiverId == request.auth.uid || resource.data.senderId == request.auth.uid || isAdmin());
+      allow read: if isAuthenticated() && (request.auth.uid in resource.data.participants || isAdmin());
       allow create: if isAuthenticated() && isValidMessage(request.resource.data);
     }
 
