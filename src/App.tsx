@@ -1018,10 +1018,10 @@ function RouteSearch({ setView, userRole, setSelectedItem }: { setView: (v: any)
       
       // Client-side filtering
       if (searchData.origin) {
-        data = data.filter((item: any) => item.origin?.toLowerCase() === searchData.origin.toLowerCase());
+        data = data.filter((item: any) => item.origin?.trim().toLowerCase() === searchData.origin.trim().toLowerCase());
       }
       if (searchData.destination) {
-        data = data.filter((item: any) => item.destination?.toLowerCase() === searchData.destination.toLowerCase());
+        data = data.filter((item: any) => item.destination?.trim().toLowerCase() === searchData.destination.trim().toLowerCase());
       }
       if (searchData.date) {
         data = data.filter((item: any) => item.date === searchData.date);
