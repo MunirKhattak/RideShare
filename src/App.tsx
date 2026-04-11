@@ -1249,9 +1249,9 @@ function RouteSearch({ setView, userRole, setSelectedItem }: { setView: (v: any)
                   </div>
                 </CardHeader>
                 <CardFooter className="p-2 bg-slate-50 flex gap-2">
-                  <Button variant="ghost" size="sm" className="flex-1 gap-1" onClick={(e) => { e.stopPropagation(); window.open(`tel:${item.phoneNumber}`, '_self'); }}><Phone className="w-3 h-3" /> Call</Button>
+                  <Button variant="ghost" size="sm" className="flex-1 gap-1" onClick={(e) => { e.stopPropagation(); window.open(`tel:${item.whatsappNumber}`, '_self'); }}><Phone className="w-3 h-3" /> Call</Button>
                   <Button variant="ghost" size="sm" className="flex-1 gap-1 text-green-600" onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/${item.whatsappNumber?.replace(/\D/g, '')}`, '_blank'); }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
-                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-blue-600" onClick={(e) => { e.stopPropagation(); setSelectedItem(item); setView('profile_view'); }}><MessageSquare className="w-3 h-3" /> Chat</Button>
+                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-blue-600" onClick={(e) => { e.stopPropagation(); setSelectedItem(item); setView('chat'); }}><MessageSquare className="w-3 h-3" /> Chat</Button>
                 </CardFooter>
               </Card>
             ))
@@ -1541,7 +1541,7 @@ function DetailedProfileView({ item, setView }: { item: any, setView: (v: any) =
           <Button className="w-full gap-2 py-6 text-lg bg-green-600 hover:bg-green-700" onClick={() => window.open(`https://wa.me/${item.whatsappNumber?.replace(/\D/g, '')}`, '_blank')}>
             <MessageCircle className="w-5 h-5" /> WhatsApp Karein
           </Button>
-          <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-blue-200 text-blue-700" onClick={() => { setSelectedItem(item); setView('chat'); }}>
+          <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-blue-200 text-blue-700" onClick={() => setView('chat')}>
             <MessageSquare className="w-5 h-5" /> In-App Chat
           </Button>
         </div>
