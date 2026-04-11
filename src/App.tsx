@@ -80,6 +80,13 @@ export default function App() {
   const [pendingStatusReport, setPendingStatusReport] = useState<any>(null);
 
   useEffect(() => {
+    // Use setTimeout to ensure scrolling happens after the DOM has updated
+    setTimeout(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }, 10);
+  }, [view]);
+
+  useEffect(() => {
     if (!user || !profile) return;
     
     // Check for rides/requests that need status report
@@ -721,7 +728,7 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any, it
           animate={{ y: 0, opacity: 1 }}
           className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight flex flex-col items-center"
         >
-          <span><span className="text-pink-700">EasyTravel</span> me</span>
+          <span><span className="text-red-500">EasyTravel</span> me</span>
           <span className="text-emerald-600">Khush Amdeed!</span>
         </motion.h2>
         <div className="space-y-4 max-w-2xl mx-auto px-4 pt-4 font-outfit">

@@ -161,14 +161,22 @@ service cloud.firestore {
     match /rides/{rideId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidRide(request.resource.data);
-      allow update: if isAuthenticated() && (request.auth.uid == resource.data.driverId || isAdmin()) && isValidRide(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == resource.data.driverId && isValidRide(request.resource.data)) || 
+        isAdmin() ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['interactions']))
+      );
       allow delete: if isAuthenticated() && (request.auth.uid == resource.data.driverId || isAdmin());
     }
 
     match /rideRequests/{requestId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidRideRequest(request.resource.data);
-      allow update: if isAuthenticated() && (request.auth.uid == resource.data.passengerId || isAdmin()) && isValidRideRequest(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == resource.data.passengerId && isValidRideRequest(request.resource.data)) || 
+        isAdmin() ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['interactions']))
+      );
       allow delete: if isAuthenticated() && (request.auth.uid == resource.data.passengerId || isAdmin());
     }
 
