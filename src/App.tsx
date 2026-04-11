@@ -508,10 +508,13 @@ function MainPage({ setView, setProfile, user }: { setView: (v: any) => void, se
   const handleRoleSelection = (role: 'driver' | 'passenger') => {
     // If user is already logged in, update their role in the profile
     if (user) {
-      // This is a simplified approach, in a real app you might need to update the DB
-      // For now, we just proceed to registration form or dashboard
+      // For now, we just proceed to dashboard with the selected role
+      // In a real app, you might need to update the DB if the role changed
+      setView('dashboard');
+    } else {
+      // If not logged in, proceed to registration
+      setView('register');
     }
-    setView(user ? 'dashboard' : 'register');
   };
 
   return (
