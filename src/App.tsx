@@ -57,10 +57,37 @@ import { format } from 'date-fns';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [view, setView] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'profile_view' | 'chat' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint'>('main');
+  const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'profile_view' | 'chat' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint'>('main');
   const [activeWarning, setActiveWarning] = useState<Warning | null>(null);
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  const setView = (newView: any) => {
+    if (view !== newView) {
+      window.history.pushState({ view: newView }, '', '');
+      setViewState(newView);
+    }
+  };
+
+  useEffect(() => {
+    // Initialize first state if not present
+    if (!window.history.state) {
+      window.history.replaceState({ view: 'main' }, '', '');
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.view) {
+        setViewState(event.state.view);
+      } else {
+        // If no state, we are at the beginning. Let the browser handle it (minimize/close app)
+        // Or default to main
+        setViewState('main');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -320,7 +347,7 @@ export default function App() {
   const renderView = () => {
     switch (view) {
       case 'main':
-        return <MainPage setView={setView} setProfile={setProfile} user={user} />;
+        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} />;
       case 'register':
         return <RegistrationForm user={user} role={profile?.role || 'passenger'} setView={setView} setProfile={setProfile} />;
       case 'dashboard':
@@ -342,7 +369,7 @@ export default function App() {
       case 'complaint':
         return <ComplaintForm user={user} profile={profile} setView={setView} />;
       default:
-        return <MainPage setView={setView} setProfile={setProfile} user={user} />;
+        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} />;
     }
   };
 
@@ -504,12 +531,21 @@ function Header({ user, setView, onSignInClick, onInstall }: { user: User | null
   );
 }
 
-function MainPage({ setView, setProfile, user }: { setView: (v: any) => void, setProfile: (p: any) => void, user: User | null }) {
-  const handleRoleSelection = (role: 'driver' | 'passenger') => {
+function MainPage({ setView, setProfile, user, profile }: { setView: (v: any) => void, setProfile: (p: any) => void, user: User | null, profile: UserProfile | null }) {
+  const handleRoleSelection = async (role: 'driver' | 'passenger') => {
     // If user is already logged in, update their role in the profile
-    if (user) {
-      // For now, we just proceed to dashboard with the selected role
-      // In a real app, you might need to update the DB if the role changed
+    if (user && profile) {
+      if (profile.role !== role) {
+        try {
+          const updatedProfile = { ...profile, role };
+          await updateDoc(doc(db, 'users', user.uid), { role });
+          setProfile(updatedProfile);
+          toast.success(`Ab aap ${role === 'driver' ? 'Car Owner' : 'Passenger'} ke dashboard mein hain`);
+        } catch (error) {
+          console.error("Error updating role:", error);
+          toast.error("Role update karne mein masla hua");
+        }
+      }
       setView('dashboard');
     } else {
       // If not logged in, proceed to registration
