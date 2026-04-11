@@ -63,6 +63,8 @@ export default function App() {
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
+  const [waModalData, setWaModalData] = useState<any>(null);
+
   const setView = (newView: any, item?: any) => {
     if (item) setSelectedItem(item);
     if (view !== newView) {
@@ -420,9 +422,9 @@ export default function App() {
       case 'post':
         return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} />;
       case 'search':
-        return <RouteSearch setView={setView} userRole={profile?.role || 'passenger'} />;
+        return <RouteSearch setView={setView} userRole={profile?.role || 'passenger'} onWhatsAppClick={setWaModalData} />;
       case 'profile_view':
-        return <DetailedProfileView item={selectedItem} setView={setView} />;
+        return <DetailedProfileView item={selectedItem} setView={setView} onWhatsAppClick={setWaModalData} />;
       case 'chat':
         return <Chat user={user} item={selectedItem} setView={setView} />;
       case 'messages':
@@ -469,6 +471,15 @@ export default function App() {
         <ComplaintReplyModal complaint={activeComplaintReply} onClose={() => setActiveComplaintReply(null)} />
       )}
 
+      {waModalData && (
+        <WhatsAppConfirmationModal 
+          item={waModalData} 
+          user={user} 
+          profile={profile} 
+          onClose={() => setWaModalData(null)} 
+        />
+      )}
+
       {/* Sign In Modal */}
       <AnimatePresence>
         {showSignInModal && (
@@ -500,12 +511,12 @@ function Header({ user, setView, onSignInClick, onInstall }: { user: User | null
       <div className="px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('main')}>
           <div className="bg-blue-600 w-10 h-10 rounded-lg flex items-center justify-center shadow-md">
-            <span className="text-white font-black text-xl italic">R.</span>
+            <span className="text-white font-black text-xl italic">ET.</span>
           </div>
           <div className="flex flex-col">
             <h1 className="text-2xl font-black tracking-tighter leading-none">
-              <span className="text-red-600">Ride</span>
-              <span className="text-blue-600">Share</span>
+              <span className="text-red-600">Easy</span>
+              <span className="text-blue-600">Travel</span>
             </h1>
             
             {/* Car Animation directly below App Name */}
@@ -528,7 +539,7 @@ function Header({ user, setView, onSignInClick, onInstall }: { user: User | null
                   }}
                   className="text-blue-500 font-bold text-[8px] tracking-tighter whitespace-nowrap"
                 >
-                  Let's Share Our Ride
+                  Let's Travel Together
                 </motion.div>
               </div>
 
@@ -630,16 +641,42 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any) =>
           animate={{ y: 0, opacity: 1 }}
           className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight flex flex-col items-center"
         >
-          <span>RideShare me</span>
+          <span>EasyTravel me</span>
           <span className="text-blue-600">Khush Amdeed!</span>
         </motion.h2>
-        <div className="space-y-2 max-w-2xl mx-auto px-4">
-          <p className="text-xl font-semibold text-slate-700">
-            Ab Karak se ya Kesi bhi Shehar se - Safar hua Bahut Asaan
-          </p>
-          <p className="text-slate-500 leading-relaxed">
-            Passenger ho ya Car Owner - Kesi bhi waqt safar karen Entehaai Araam aur Kam Kharchay k saath
-          </p>
+        <div className="space-y-3 max-w-2xl mx-auto px-4 pt-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-blue-50/50 border border-blue-100/50 py-2 px-4 rounded-full inline-block"
+          >
+            <p className="text-sm md:text-base font-bold text-blue-700 tracking-wide">
+              Hamaara Maqsad - Apke Safar ko Asaan Banana
+            </p>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-slate-100/50 border border-slate-200/50 py-2 px-6 rounded-xl"
+          >
+            <p className="text-base md:text-lg font-semibold text-slate-700">
+              Ab Karak se ya Kesi bhi Shehar se - Safar hua Bahut Asaan
+            </p>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-emerald-50/30 border border-emerald-100/20 py-3 px-6 rounded-2xl"
+          >
+            <p className="text-sm md:text-base text-slate-500 font-medium leading-relaxed">
+              Passenger ho ya Car Owner - Kesi bhi waqt safar karen Entehaai Araam aur Kam Kharchay k Saath
+            </p>
+          </motion.div>
         </div>
       </div>
 
@@ -1146,7 +1183,7 @@ function Dashboard({ user, profile, setView }: { user: User | null, profile: Use
   );
 }
 
-function RouteSearch({ setView, userRole }: { setView: (v: any, item?: any) => void, userRole: 'driver' | 'passenger' }) {
+function RouteSearch({ setView, userRole, onWhatsAppClick }: { setView: (v: any, item?: any) => void, userRole: 'driver' | 'passenger', onWhatsAppClick: (item: any) => void }) {
   const [searchData, setSearchData] = useState({
     origin: '',
     destination: '',
@@ -1263,7 +1300,7 @@ function RouteSearch({ setView, userRole }: { setView: (v: any, item?: any) => v
                 </CardHeader>
                 <CardFooter className="p-2 bg-slate-50 flex gap-2">
                   <Button variant="ghost" size="sm" className="flex-1 gap-1" onClick={(e) => { e.stopPropagation(); window.open(`tel:${item.whatsappNumber}`, '_self'); }}><Phone className="w-3 h-3" /> Call</Button>
-                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-green-600" onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/${item.whatsappNumber?.replace(/\D/g, '')}`, '_blank'); }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
+                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-green-600" onClick={(e) => { e.stopPropagation(); onWhatsAppClick(item); }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
                   <Button variant="ghost" size="sm" className="flex-1 gap-1 text-blue-600" onClick={(e) => { e.stopPropagation(); setView('chat', item); }}><MessageSquare className="w-3 h-3" /> Chat</Button>
                 </CardFooter>
               </Card>
@@ -1326,13 +1363,13 @@ function LoadingSpinner() {
         className="flex flex-col items-center gap-6"
       >
         <div className="bg-blue-600 w-20 h-20 rounded-2xl flex items-center justify-center shadow-xl">
-          <span className="text-white font-black text-4xl italic">R.</span>
+          <span className="text-white font-black text-4xl italic">ET.</span>
         </div>
         
         <div className="flex flex-col items-center">
           <h1 className="text-5xl font-black tracking-tighter leading-none mb-3">
-            <span className="text-red-600">Ride</span>
-            <span className="text-blue-600">Share</span>
+            <span className="text-red-600">Easy</span>
+            <span className="text-blue-600">Travel</span>
           </h1>
           
           {/* Car Animation */}
@@ -1355,7 +1392,7 @@ function LoadingSpinner() {
                 }}
                 className="text-blue-500 font-bold text-[12px] tracking-tighter whitespace-nowrap"
               >
-                Let's Share Our Ride
+                Let's Travel Together
               </motion.div>
             </div>
 
@@ -1514,7 +1551,7 @@ function PostForm({ user, profile, setView, type }: { user: User | null, profile
   );
 }
 
-function DetailedProfileView({ item, setView }: { item: any, setView: (v: any) => void }) {
+function DetailedProfileView({ item, setView, onWhatsAppClick }: { item: any, setView: (v: any) => void, onWhatsAppClick: (item: any) => void }) {
   if (!item) return null;
   return (
     <Card className="max-w-md mx-auto">
@@ -1551,7 +1588,7 @@ function DetailedProfileView({ item, setView }: { item: any, setView: (v: any) =
           <Button className="w-full gap-2 py-6 text-lg bg-blue-600" onClick={() => window.open(`tel:${item.whatsappNumber}`, '_self')}>
             <Phone className="w-5 h-5" /> Call Karein
           </Button>
-          <Button className="w-full gap-2 py-6 text-lg bg-green-600 hover:bg-green-700" onClick={() => window.open(`https://wa.me/${item.whatsappNumber?.replace(/\D/g, '')}`, '_blank')}>
+          <Button className="w-full gap-2 py-6 text-lg bg-green-600 hover:bg-green-700" onClick={() => onWhatsAppClick(item)}>
             <MessageCircle className="w-5 h-5" /> WhatsApp Karein
           </Button>
           <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-blue-200 text-blue-700" onClick={() => setView('chat')}>
@@ -2500,6 +2537,152 @@ function UserWarningModal({ warning, onClose }: { warning: Warning, onClose: () 
           <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSubmitReply}>Submit</Button>
         </CardFooter>
       </Card>
+    </div>
+  );
+}
+
+function WhatsAppConfirmationModal({ item, user, profile, onClose }: { item: any, user: User | null, profile: UserProfile | null, onClose: () => void }) {
+  const isDriver = profile?.role === 'driver';
+  const [formData, setFormData] = useState({
+    origin: item.origin || '',
+    destination: item.destination || '',
+    exactOrigin: '',
+    exactDestination: '',
+    date: item.date || '',
+    day: item.day || '',
+    time: item.time || '',
+    seats: isDriver ? (item.availableSeats?.toString() || '') : '',
+    price: isDriver ? (item.price?.toString() || '') : 'Munaasib'
+  });
+
+  const handleSend = () => {
+    const roleLabel = isDriver ? 'Car Owner' : 'Passenger';
+    const seatsLabel = isDriver ? 'Seats Available' : 'Seats Required';
+    
+    let message = `*Confirmation Message from EasyTravel*\n\n`;
+    message += `${profile?.displayName} (${roleLabel})\n`;
+    message += `User ID: ${profile?.customId || 'N/A'}\n\n`;
+    message += `*Route:* ${formData.origin} to ${formData.destination}\n`;
+    message += `*Exact Locations:*\n`;
+    message += `From: ${formData.exactOrigin}\n`;
+    message += `To: ${formData.exactDestination}\n\n`;
+    message += `*Schedule:*\n`;
+    message += `Date: ${formData.date}\n`;
+    message += `Day: ${formData.day}\n`;
+    message += `Time: ${formData.time}\n\n`;
+    message += `*${seatsLabel}:* ${formData.seats}\n`;
+    message += `*Karaaya:* ${formData.price}\n\n`;
+    message += `Agar ap jana chahtay hain to reply kr den\n`;
+    message += `*Shukriya*`;
+
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${item.whatsappNumber?.replace(/\D/g, '')}?text=${encodedMessage}`;
+    window.open(whatsappUrl, '_blank');
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+      >
+        <div className="bg-green-600 p-6 text-white flex justify-between items-center shrink-0">
+          <div className="flex items-center gap-3">
+            <MessageCircle className="w-8 h-8" />
+            <h3 className="text-2xl font-bold">WhatsApp Confirm</h3>
+          </div>
+          <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={onClose}>
+            <Plus className="w-6 h-6 rotate-45" />
+          </Button>
+        </div>
+        
+        <ScrollArea className="flex-1">
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-500">Kahan Se (City)</Label>
+                <Input value={formData.origin} readOnly className="bg-slate-50 border-slate-200" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-500">Kahan Tak (City)</Label>
+                <Input value={formData.destination} readOnly className="bg-slate-50 border-slate-200" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-blue-600">Konsi jaga se (Location)</Label>
+              <Input 
+                placeholder="Exact location e.g. Karak Chowk" 
+                value={formData.exactOrigin}
+                onChange={e => setFormData({...formData, exactOrigin: e.target.value})}
+                className="border-blue-100 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-blue-600">Konsi jaga tak (Location)</Label>
+              <Input 
+                placeholder="Exact location e.g. Faizabad" 
+                value={formData.exactDestination}
+                onChange={e => setFormData({...formData, exactDestination: e.target.value})}
+                className="border-blue-100 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-slate-500">Date</Label>
+                <Input value={formData.date} readOnly className="bg-slate-50 text-xs px-2" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-slate-500">Day</Label>
+                <Input value={formData.day} readOnly className="bg-slate-50 text-xs px-2" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-slate-500">Time</Label>
+                <Input value={formData.time} readOnly className="bg-slate-50 text-xs px-2" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-blue-600">
+                  {isDriver ? 'Seats Available' : 'Seats Required'}
+                </Label>
+                <Input 
+                  type="number"
+                  placeholder="e.g. 2" 
+                  value={formData.seats}
+                  onChange={e => setFormData({...formData, seats: e.target.value})}
+                  className="border-blue-100 focus:ring-blue-500"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-blue-600">Karaaya</Label>
+                <Input 
+                  placeholder="e.g. 500" 
+                  value={formData.price}
+                  onChange={e => setFormData({...formData, price: e.target.value})}
+                  className="border-blue-100 focus:ring-blue-500"
+                  readOnly={!isDriver && formData.price === 'Munaasib'}
+                />
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+
+        <div className="p-6 border-t bg-slate-50 shrink-0">
+          <Button 
+            onClick={handleSend}
+            className="w-full py-7 rounded-2xl bg-green-600 hover:bg-green-700 text-lg font-bold shadow-xl shadow-green-100 transition-all active:scale-95 flex gap-2"
+          >
+            <MessageCircle className="w-6 h-6" />
+            Send to {isDriver ? 'Passenger' : 'Car Owner'}
+          </Button>
+        </div>
+      </motion.div>
     </div>
   );
 }
