@@ -62,7 +62,8 @@ export default function App() {
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
-  const setView = (newView: any) => {
+  const setView = (newView: any, item?: any) => {
+    if (item) setSelectedItem(item);
     if (view !== newView) {
       window.history.pushState({ view: newView }, '', '');
       setViewState(newView);
@@ -418,7 +419,7 @@ export default function App() {
       case 'post':
         return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} />;
       case 'search':
-        return <RouteSearch setView={setView} userRole={profile?.role || 'passenger'} setSelectedItem={setSelectedItem} />;
+        return <RouteSearch setView={setView} userRole={profile?.role || 'passenger'} />;
       case 'profile_view':
         return <DetailedProfileView item={selectedItem} setView={setView} />;
       case 'chat':
@@ -1133,7 +1134,7 @@ function Dashboard({ user, profile, setView }: { user: User | null, profile: Use
   );
 }
 
-function RouteSearch({ setView, userRole, setSelectedItem }: { setView: (v: any) => void, userRole: 'driver' | 'passenger', setSelectedItem: (item: any) => void }) {
+function RouteSearch({ setView, userRole }: { setView: (v: any, item?: any) => void, userRole: 'driver' | 'passenger' }) {
   const [searchData, setSearchData] = useState({
     origin: '',
     destination: '',
@@ -1232,7 +1233,7 @@ function RouteSearch({ setView, userRole, setSelectedItem }: { setView: (v: any)
             <EmptyState message="Filhal koi post nahi mili." />
           ) : (
             results.map(item => (
-              <Card key={item.id} className="hover:border-blue-400 cursor-pointer" onClick={() => { setSelectedItem(item); setView('profile_view'); }}>
+              <Card key={item.id} className="hover:border-blue-400 cursor-pointer" onClick={() => setView('profile_view', item)}>
                 <CardHeader className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -1251,7 +1252,7 @@ function RouteSearch({ setView, userRole, setSelectedItem }: { setView: (v: any)
                 <CardFooter className="p-2 bg-slate-50 flex gap-2">
                   <Button variant="ghost" size="sm" className="flex-1 gap-1" onClick={(e) => { e.stopPropagation(); window.open(`tel:${item.whatsappNumber}`, '_self'); }}><Phone className="w-3 h-3" /> Call</Button>
                   <Button variant="ghost" size="sm" className="flex-1 gap-1 text-green-600" onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/${item.whatsappNumber?.replace(/\D/g, '')}`, '_blank'); }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
-                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-blue-600" onClick={(e) => { e.stopPropagation(); setSelectedItem(item); setView('chat'); }}><MessageSquare className="w-3 h-3" /> Chat</Button>
+                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-blue-600" onClick={(e) => { e.stopPropagation(); setView('chat', item); }}><MessageSquare className="w-3 h-3" /> Chat</Button>
                 </CardFooter>
               </Card>
             ))
