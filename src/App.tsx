@@ -115,6 +115,9 @@ export default function App() {
     const unsub = onSnapshot(q, (snap) => {
       if (!snap.empty) {
         setActiveWarning({ id: snap.docs[0].id, ...snap.docs[0].data() } as Warning);
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Admin Warning', { body: 'You have received a warning from the admin.' });
+        }
       } else {
         setActiveWarning(null);
       }
@@ -139,6 +142,9 @@ export default function App() {
       const replied = snap.docs.find(doc => doc.data().adminReply);
       if (replied) {
         setActiveComplaintReply({ id: replied.id, ...replied.data() } as Complaint);
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Complaint Resolved', { body: 'An admin has replied to your complaint.' });
+        }
       } else {
         setActiveComplaintReply(null);
       }
@@ -316,10 +322,67 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'messages');
     });
 
+    // 4. Listen for new rides (for passengers)
+    const qNewRides = query(
+      collection(db, 'rides'),
+      where('status', '==', 'available'),
+      orderBy('createdAt', 'desc'),
+      limit(5)
+    );
+    
+    let initialRidesLoad = true;
+    const unsubNewRides = onSnapshot(qNewRides, (snapshot) => {
+      if (initialRidesLoad) {
+        initialRidesLoad = false;
+        return;
+      }
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added' && profile.role === 'passenger') {
+          const ride = change.doc.data() as Ride;
+          if (ride.driverId !== user.uid) {
+            sendNotification('New Ride Available', `${ride.driverName} is going to ${ride.destination}`);
+          }
+        }
+      });
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'rides');
+    });
+
+    // Admin Notifications
+    let unsubAdminComplaints = () => {};
+    let unsubAdminWarnings = () => {};
+    
+    if (profile.role === 'admin' || user.email === 'munirkhattak.pk@gmail.com') {
+      const qComplaints = query(collection(db, 'complaints'), where('status', '==', 'pending'), orderBy('createdAt', 'desc'), limit(1));
+      let initComplaints = true;
+      unsubAdminComplaints = onSnapshot(qComplaints, (snapshot) => {
+        if (initComplaints) { initComplaints = false; return; }
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            sendNotification('New Complaint', 'A new complaint has been submitted.');
+          }
+        });
+      });
+
+      const qWarnings = query(collection(db, 'warnings'), where('status', '==', 'replied'), limit(1));
+      let initWarnings = true;
+      unsubAdminWarnings = onSnapshot(qWarnings, (snapshot) => {
+        if (initWarnings) { initWarnings = false; return; }
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'modified') {
+            sendNotification('Warning Reply', 'A user has replied to a warning.');
+          }
+        });
+      });
+    }
+
     return () => {
       unsubNewRequests();
       unsubMyRequests();
       unsubMessages();
+      unsubNewRides();
+      unsubAdminComplaints();
+      unsubAdminWarnings();
     };
   }, [user, profile]);
 
@@ -358,6 +421,8 @@ export default function App() {
         return <RouteSearch setView={setView} userRole={profile?.role || 'passenger'} setSelectedItem={setSelectedItem} />;
       case 'profile_view':
         return <DetailedProfileView item={selectedItem} setView={setView} />;
+      case 'chat':
+        return <Chat user={user} item={selectedItem} setView={setView} />;
       case 'my_rides':
         return <MyRides user={user} setView={setView} />;
       case 'my_requests':
@@ -1481,6 +1546,110 @@ function DetailedProfileView({ item, setView }: { item: any, setView: (v: any) =
           </Button>
         </div>
       </CardContent>
+    </Card>
+  );
+}
+
+function Chat({ user, item, setView }: { user: User | null, item: any, setView: (v: any) => void }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const otherUserId = item?.driverId || item?.passengerId;
+  const otherUserName = item?.driverName || item?.passengerName;
+  const otherUserPhoto = item?.driverPhoto || item?.passengerPhoto;
+
+  useEffect(() => {
+    if (!user || !otherUserId || !item) return;
+
+    const q = query(
+      collection(db, 'messages'),
+      where('rideId', '==', item.id),
+      orderBy('timestamp', 'asc')
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatMessage));
+      setMessages(msgs);
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    });
+
+    return () => unsub();
+  }, [user, otherUserId, item?.id]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !newMessage.trim() || !otherUserId || !item) return;
+
+    const msgText = newMessage.trim();
+    setNewMessage('');
+
+    try {
+      await addDoc(collection(db, 'messages'), {
+        senderId: user.uid,
+        receiverId: otherUserId,
+        text: msgText,
+        rideId: item.id,
+        timestamp: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'messages');
+    }
+  };
+
+  if (!user || !item) return null;
+
+  return (
+    <Card className="max-w-md mx-auto h-[80vh] flex flex-col">
+      <CardHeader className="border-b p-4 flex flex-row items-center gap-3 space-y-0">
+        <Button variant="ghost" size="icon" onClick={() => setView('profile_view')}>
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+        <Avatar className="w-10 h-10">
+          <AvatarImage src={otherUserPhoto} />
+          <AvatarFallback>{otherUserName?.charAt(0)}</AvatarFallback>
+        </Avatar>
+        <div className="flex-1">
+          <CardTitle className="text-lg">{otherUserName}</CardTitle>
+          <p className="text-xs text-slate-500">{item.origin} to {item.destination}</p>
+        </div>
+      </CardHeader>
+      
+      <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+        {messages.length === 0 ? (
+          <div className="text-center text-slate-500 mt-10">
+            No messages yet. Start the conversation!
+          </div>
+        ) : (
+          messages.map((msg) => {
+            const isMe = msg.senderId === user.uid;
+            return (
+              <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${isMe ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-white border text-slate-800 rounded-tl-sm'}`}>
+                  <p className="text-sm">{msg.text}</p>
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={messagesEndRef} />
+      </CardContent>
+
+      <div className="p-3 border-t bg-white">
+        <form onSubmit={handleSendMessage} className="flex w-full gap-2">
+          <Input 
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1 rounded-full"
+          />
+          <Button type="submit" size="icon" className="rounded-full bg-blue-600 hover:bg-blue-700" disabled={!newMessage.trim()}>
+            <Send className="w-4 h-4" />
+          </Button>
+        </form>
+      </div>
     </Card>
   );
 }
