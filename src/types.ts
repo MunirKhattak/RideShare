@@ -33,6 +33,7 @@ export interface Ride {
   finalStatus?: 'done' | 'cancelled' | 'late' | 'pending';
   statusReportedAt?: any;
   createdAt: any;
+  isDeleted?: boolean;
 }
 
 export interface RideRequest {
@@ -53,6 +54,7 @@ export interface RideRequest {
   finalStatus?: 'done' | 'cancelled' | 'late' | 'pending';
   statusReportedAt?: any;
   createdAt: any;
+  isDeleted?: boolean;
 }
 
 export interface ChatMessage {
@@ -63,6 +65,7 @@ export interface ChatMessage {
   text: string;
   rideId?: string;
   timestamp: any;
+  status?: 'sent' | 'delivered' | 'read';
 }
 
 export interface Complaint {

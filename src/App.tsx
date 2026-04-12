@@ -50,7 +50,9 @@ import {
   LayoutDashboard,
   AlertCircle,
   Eye,
-  Info
+  Info,
+  Check,
+  CheckCheck
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { motion, AnimatePresence } from 'motion/react';
@@ -70,7 +72,7 @@ const trackInteraction = async (rideId: string, type: 'call' | 'whatsapp' | 'cha
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint'>('main');
+  const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint'>('main');
   const [activeWarning, setActiveWarning] = useState<Warning | null>(null);
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -135,6 +137,22 @@ export default function App() {
 
     return () => unsubs.forEach(unsub => unsub());
   }, [user, profile]);
+
+  // Global listener for delivered messages
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'messages'),
+      where('receiverId', '==', user.uid),
+      where('status', '==', 'sent')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      snap.docs.forEach(docSnap => {
+        updateDoc(doc(db, 'messages', docSnap.id), { status: 'delivered' }).catch(console.error);
+      });
+    });
+    return () => unsub();
+  }, [user]);
 
   const setView = (newView: any, item?: any) => {
     if (item) setSelectedItem(item);
@@ -502,6 +520,8 @@ export default function App() {
         return <Dashboard user={user} profile={profile} setView={setView} />;
       case 'post':
         return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} />;
+      case 'edit_post':
+        return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} editItem={selectedItem} />;
       case 'search':
         return <RouteSearch setView={setView} userRole={(profile?.role as 'driver' | 'passenger') || 'passenger'} onWhatsAppClick={setWaModalData} />;
       case 'profile_view':
@@ -902,7 +922,7 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
         )}
         <CardHeader className="text-center">
           <CardTitle>Sign In</CardTitle>
-          <CardDescription>RideShare mein khush amdeed</CardDescription>
+          <CardDescription>EasyTravel mein khush amdeed</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Button onClick={handleGoogleSignIn} className="w-full py-6 text-lg gap-3 bg-white text-slate-900 border hover:bg-slate-50">
@@ -1220,15 +1240,6 @@ function Dashboard({ user, profile, setView }: { user: User | null, profile: Use
 
       <div className="grid grid-cols-1 gap-5">
         <Button 
-          className="h-24 text-xl gap-4 bg-indigo-600 hover:bg-indigo-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
-          onClick={() => setView('post')}
-        >
-          <div className="bg-white/20 p-2 rounded-xl">
-            <Plus className="w-7 h-7" />
-          </div>
-          {userRole === 'driver' ? 'Naya Post Lagayen' : 'Naya Post Lagayen'}
-        </Button>
-        <Button 
           className="h-24 text-xl gap-4 bg-emerald-600 hover:bg-emerald-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
           onClick={() => setView('search')}
         >
@@ -1236,6 +1247,15 @@ function Dashboard({ user, profile, setView }: { user: User | null, profile: Use
             <Search className="w-7 h-7" />
           </div>
           {userRole === 'driver' ? 'Passenger Dhoonden' : 'Car Owner Dhoonden'}
+        </Button>
+        <Button 
+          className="h-24 text-xl gap-4 bg-indigo-600 hover:bg-indigo-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+          onClick={() => setView('post')}
+        >
+          <div className="bg-white/20 p-2 rounded-xl">
+            <Plus className="w-7 h-7" />
+          </div>
+          {userRole === 'driver' ? 'Naya Post Lagayen' : 'Naya Post Lagayen'}
         </Button>
         {userRole === 'driver' && (
           <Button 
@@ -1283,9 +1303,30 @@ function RouteSearch({ setView, userRole, onWhatsAppClick }: { setView: (v: any,
   });
   const [results, setResults] = useState<any[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<{origin: string, destination: string}[]>([]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    const history = localStorage.getItem('rideSearchHistory');
+    if (history) {
+      try {
+        setSearchHistory(JSON.parse(history));
+      } catch (e) {
+        console.error('Failed to parse search history', e);
+      }
+    }
+  }, []);
+
+  const handleSearch = (e?: React.FormEvent, overrideData?: any) => {
+    if (e) e.preventDefault();
+    const dataToSearch = overrideData || searchData;
+    
+    if (dataToSearch.origin || dataToSearch.destination) {
+      const newHistoryItem = { origin: dataToSearch.origin, destination: dataToSearch.destination };
+      const newHistory = [newHistoryItem, ...searchHistory.filter(h => h.origin !== newHistoryItem.origin || h.destination !== newHistoryItem.destination)].slice(0, 5);
+      setSearchHistory(newHistory);
+      localStorage.setItem('rideSearchHistory', JSON.stringify(newHistory));
+    }
+
     const collectionName = userRole === 'driver' ? 'rideRequests' : 'rides';
     
     // Fetch all documents and filter client-side for case-insensitivity
@@ -1295,14 +1336,15 @@ function RouteSearch({ setView, userRole, onWhatsAppClick }: { setView: (v: any,
       let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       // Client-side filtering
-      if (searchData.origin) {
-        data = data.filter((item: any) => item.origin?.trim().toLowerCase() === searchData.origin.trim().toLowerCase());
+      data = data.filter((item: any) => !item.isDeleted);
+      if (dataToSearch.origin) {
+        data = data.filter((item: any) => item.origin?.trim().toLowerCase() === dataToSearch.origin.trim().toLowerCase());
       }
-      if (searchData.destination) {
-        data = data.filter((item: any) => item.destination?.trim().toLowerCase() === searchData.destination.trim().toLowerCase());
+      if (dataToSearch.destination) {
+        data = data.filter((item: any) => item.destination?.trim().toLowerCase() === dataToSearch.destination.trim().toLowerCase());
       }
-      if (searchData.date) {
-        data = data.filter((item: any) => item.date === searchData.date);
+      if (dataToSearch.date) {
+        data = data.filter((item: any) => item.date === dataToSearch.date);
       }
       
       setResults(data);
@@ -1364,6 +1406,29 @@ function RouteSearch({ setView, userRole, onWhatsAppClick }: { setView: (v: any,
           </form>
         </CardContent>
       </Card>
+
+      {searchHistory.length > 0 && !hasSearched && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-slate-500">Pichli Searches (Recent Searches):</h3>
+          <div className="flex flex-wrap gap-2">
+            {searchHistory.map((h, idx) => (
+              <Badge 
+                key={idx} 
+                variant="secondary" 
+                className="cursor-pointer hover:bg-slate-200 px-3 py-1.5"
+                onClick={() => {
+                  const newData = { ...searchData, origin: h.origin, destination: h.destination };
+                  setSearchData(newData);
+                  handleSearch(undefined, newData);
+                }}
+              >
+                <Search className="w-3 h-3 mr-1" />
+                {h.origin || 'Any'} se {h.destination || 'Any'}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
 
       {hasSearched && (
         <div className="space-y-4">
@@ -1527,17 +1592,17 @@ function LoadingSpinner() {
   );
 }
 
-function PostForm({ user, profile, setView, type }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, type: 'ride' | 'request' }) {
+function PostForm({ user, profile, setView, type, editItem }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, type: 'ride' | 'request', editItem?: any }) {
   const [formData, setFormData] = useState({
-    origin: '',
-    destination: '',
-    date: format(new Date(), 'yyyy-MM-dd'),
-    day: format(new Date(), 'EEEE'),
-    time: '',
-    pickupPoint: '',
-    dropoffPoint: '',
-    seats: '3',
-    price: '1000'
+    origin: editItem?.origin || '',
+    destination: editItem?.destination || '',
+    date: editItem?.date || format(new Date(), 'yyyy-MM-dd'),
+    day: editItem?.day || format(new Date(), 'EEEE'),
+    time: editItem?.time || '',
+    pickupPoint: editItem?.pickupPoint || '',
+    dropoffPoint: editItem?.dropoffPoint || '',
+    seats: editItem?.availableSeats?.toString() || '3',
+    price: editItem?.price?.toString() || '1000'
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1560,9 +1625,9 @@ function PostForm({ user, profile, setView, type }: { user: User | null, profile
         dropoffPoint: formData.dropoffPoint,
         availableSeats: parseInt(formData.seats),
         price: parseInt(formData.price),
-        status: 'available',
-        finalStatus: 'pending',
-        createdAt: serverTimestamp()
+        status: editItem ? editItem.status : 'available',
+        finalStatus: editItem ? editItem.finalStatus : 'pending',
+        ...(editItem ? {} : { createdAt: serverTimestamp() })
       } : {
         passengerId: user.uid,
         passengerName: user.displayName,
@@ -1574,16 +1639,21 @@ function PostForm({ user, profile, setView, type }: { user: User | null, profile
         date: formData.date,
         day: formData.day,
         time: formData.time,
-        status: 'pending',
-        finalStatus: 'pending',
-        createdAt: serverTimestamp()
+        status: editItem ? editItem.status : 'pending',
+        finalStatus: editItem ? editItem.finalStatus : 'pending',
+        ...(editItem ? {} : { createdAt: serverTimestamp() })
       };
 
-      await addDoc(collection(db, collectionName), data);
-      toast.success('Post lag gaya hai!');
+      if (editItem) {
+        await updateDoc(doc(db, collectionName, editItem.id), data);
+        toast.success('Post update ho gaya!');
+      } else {
+        await addDoc(collection(db, collectionName), data);
+        toast.success('Post lag gaya hai!');
+      }
       setView('dashboard');
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, type === 'ride' ? 'rides' : 'rideRequests');
+      handleFirestoreError(error, editItem ? OperationType.UPDATE : OperationType.CREATE, editItem ? `${collectionName}/${editItem.id}` : collectionName);
     }
   };
 
@@ -1592,7 +1662,7 @@ function PostForm({ user, profile, setView, type }: { user: User | null, profile
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Button variant="ghost" size="icon" onClick={() => setView('dashboard')}><Navigation className="rotate-180" /></Button>
-          {type === 'ride' ? 'Naya Post Lagayen' : 'Naya Post Lagayen'}
+          {editItem ? 'Post Edit Karen' : (type === 'ride' ? 'Naya Post Lagayen' : 'Naya Post Lagayen')}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -1610,11 +1680,19 @@ function PostForm({ user, profile, setView, type }: { user: User | null, profile
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Tareekh (Date)</Label>
-              <Input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+              <Input type="date" value={formData.date} onChange={e => {
+                const val = e.target.value;
+                if (val) {
+                  const d = new Date(val);
+                  setFormData({...formData, date: val, day: format(d, 'EEEE')});
+                } else {
+                  setFormData({...formData, date: val, day: ''});
+                }
+              }} required />
             </div>
             <div className="space-y-2">
               <Label>Din (Day)</Label>
-              <Input value={formData.day} onChange={e => setFormData({...formData, day: e.target.value})} required />
+              <Input value={formData.day} readOnly className="bg-slate-50" />
             </div>
           </div>
           <div className="space-y-2">
@@ -1747,17 +1825,33 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const otherUserId = item?.driverId || item?.passengerId;
-  const otherUserName = item?.driverName || item?.passengerName;
-  const otherUserPhoto = item?.driverPhoto || item?.passengerPhoto;
+  const rideItem = item?.ride || item;
+  
+  // Determine other user details
+  let otherUserId = item?.otherUser?.uid || item?.chat?.otherId;
+  let otherUserName = item?.otherUser?.displayName;
+  let otherUserPhoto = item?.otherUser?.photoURL;
+
+  // If not provided via chat context, determine from rideItem
+  if (!otherUserId) {
+    if (rideItem?.driverId && rideItem.driverId !== user?.uid) {
+      otherUserId = rideItem.driverId;
+      otherUserName = rideItem.driverName;
+      otherUserPhoto = rideItem.driverPhoto;
+    } else if (rideItem?.passengerId && rideItem.passengerId !== user?.uid) {
+      otherUserId = rideItem.passengerId;
+      otherUserName = rideItem.passengerName;
+      otherUserPhoto = rideItem.passengerPhoto;
+    }
+  }
 
   useEffect(() => {
-    if (!user || !otherUserId || !item) return;
+    if (!user || !otherUserId || !rideItem) return;
 
     // Query messages where this user is a participant and it belongs to this ride
     const q = query(
       collection(db, 'messages'),
-      where('rideId', '==', item.id),
+      where('rideId', '==', rideItem.id),
       where('participants', 'array-contains', user.uid),
       orderBy('timestamp', 'asc')
     );
@@ -1765,17 +1859,25 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
     const unsub = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatMessage));
       setMessages(msgs);
+      
+      // Mark messages as read
+      msgs.forEach(msg => {
+        if (msg.receiverId === user.uid && msg.status !== 'read') {
+          updateDoc(doc(db, 'messages', msg.id), { status: 'read' }).catch(console.error);
+        }
+      });
+
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
     });
 
     return () => unsub();
-  }, [user, otherUserId, item?.id]);
+  }, [user, otherUserId, rideItem?.id]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newMessage.trim() || !otherUserId || !item) return;
+    if (!user || !newMessage.trim() || !otherUserId || !rideItem) return;
 
     const msgText = newMessage.trim();
     setNewMessage('');
@@ -1786,7 +1888,8 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
         receiverId: otherUserId,
         participants: [user.uid, otherUserId],
         text: msgText,
-        rideId: item.id,
+        rideId: rideItem.id,
+        status: 'sent',
         timestamp: serverTimestamp()
       });
     } catch (error) {
@@ -1794,7 +1897,19 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
     }
   };
 
-  if (!user || !item) return null;
+  if (!user || !rideItem) return null;
+
+  if (!otherUserId) {
+    return (
+      <Card className="max-w-md mx-auto p-8 text-center shadow-2xl border-none">
+        <MessageCircle className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+        <p className="text-slate-500">Aap apne aap se chat nahi kar sakte.</p>
+        <Button variant="link" className="text-blue-600 mt-2" onClick={() => setView('search')}>
+          Wapas jayen
+        </Button>
+      </Card>
+    );
+  }
 
   return (
     <Card className="max-w-md mx-auto h-[80vh] flex flex-col shadow-2xl border-none overflow-hidden">
@@ -1804,11 +1919,11 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
         </Button>
         <Avatar className="w-10 h-10 border-2 border-blue-100">
           <AvatarImage src={otherUserPhoto} />
-          <AvatarFallback>{otherUserName?.charAt(0)}</AvatarFallback>
+          <AvatarFallback>{otherUserName?.charAt(0) || 'U'}</AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
-          <CardTitle className="text-lg truncate">{otherUserName}</CardTitle>
-          <p className="text-xs text-slate-500 truncate">{item.origin} to {item.destination}</p>
+          <CardTitle className="text-lg truncate">{otherUserName || 'User'}</CardTitle>
+          <p className="text-xs text-slate-500 truncate">{rideItem.origin} to {rideItem.destination}</p>
         </div>
       </CardHeader>
       
@@ -1831,8 +1946,19 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
                         : 'bg-white border border-slate-100 text-slate-800 rounded-tl-none'
                     }`}>
                       <p className="text-sm leading-relaxed">{msg.text}</p>
-                      <div className={`text-[10px] mt-1 opacity-60 ${isMe ? 'text-right' : 'text-left'}`}>
+                      <div className={`text-[10px] mt-1 opacity-60 flex items-center gap-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                         {msg.timestamp?.toDate ? format(msg.timestamp.toDate(), 'HH:mm') : ''}
+                        {isMe && (
+                          <span className="ml-1">
+                            {msg.status === 'read' ? (
+                              <CheckCheck className="w-3 h-3 text-cyan-300" />
+                            ) : msg.status === 'delivered' ? (
+                              <CheckCheck className="w-3 h-3 text-blue-200" />
+                            ) : (
+                              <Check className="w-3 h-3 text-blue-200" />
+                            )}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1954,7 +2080,7 @@ function ChatListItem({ chat, user, setView }: { chat: any, user: User | null, s
   return (
     <Card 
       className="hover:bg-blue-50/50 cursor-pointer transition-all border-none shadow-sm hover:shadow-md active:scale-[0.98]" 
-      onClick={() => setView('chat', ride)}
+      onClick={() => setView('chat', { ride, chat, otherUser })}
     >
       <CardContent className="p-4 flex items-center gap-4">
         <Avatar className="w-14 h-14 border-2 border-white shadow-sm">
@@ -2009,7 +2135,7 @@ function MyRides({ user, setView }: { user: User | null, setView: (v: any, item?
     );
     
     const unsub = onSnapshot(q, (snapshot) => {
-      setMyRides(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ride)));
+      setMyRides(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ride)).filter(r => !r.isDeleted));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'rides');
     });
@@ -2095,9 +2221,16 @@ function MyRides({ user, setView }: { user: User | null, setView: (v: any, item?
               </CardContent>
               <CardFooter className="p-2 bg-slate-50 flex flex-wrap gap-2">
                 <select 
-                  className="flex-1 min-w-[120px] h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="flex-1 min-w-[100px] h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={ride.status}
-                  onChange={(e) => updateStatus(ride.id, e.target.value)}
+                  onChange={(e) => {
+                    const newStatus = e.target.value;
+                    if (newStatus === 'cancelled') {
+                      updateDoc(doc(db, 'rides', ride.id), { status: 'cancelled', finalStatus: 'cancelled' });
+                    } else {
+                      updateStatus(ride.id, newStatus);
+                    }
+                  }}
                 >
                   <option value="available">Available</option>
                   <option value="full">Full</option>
@@ -2109,13 +2242,20 @@ function MyRides({ user, setView }: { user: User | null, setView: (v: any, item?
                     Done
                   </Button>
                 )}
+                <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => setView('edit_post', ride)}>
+                  Edit
+                </Button>
                 <Button variant="destructive" size="sm" onClick={async () => {
                   if (confirm('Kya aap ye post delete karna chahte hain?')) {
                     try {
-                      await deleteDoc(doc(db, 'rides', ride.id));
+                      await updateDoc(doc(db, 'rides', ride.id), {
+                        isDeleted: true,
+                        status: 'cancelled',
+                        finalStatus: 'cancelled'
+                      });
                       toast.success('Post delete ho gaya!');
                     } catch (error) {
-                      handleFirestoreError(error, OperationType.DELETE, `rides/${ride.id}`);
+                      handleFirestoreError(error, OperationType.UPDATE, `rides/${ride.id}`);
                     }
                   }
                 }}>Delete</Button>
@@ -2141,7 +2281,7 @@ function MyRequests({ user, setView }: { user: User | null, setView: (v: any, it
     );
     
     const unsub = onSnapshot(q, (snapshot) => {
-      setMyRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RideRequest)));
+      setMyRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RideRequest)).filter(r => !r.isDeleted));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'rideRequests');
     });
@@ -2219,9 +2359,16 @@ function MyRequests({ user, setView }: { user: User | null, setView: (v: any, it
               </CardContent>
               <CardFooter className="p-2 bg-slate-50 flex flex-wrap gap-2">
                 <select 
-                  className="flex-1 min-w-[120px] h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="flex-1 min-w-[100px] h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={req.status}
-                  onChange={(e) => updateStatus(req.id, e.target.value)}
+                  onChange={(e) => {
+                    const newStatus = e.target.value;
+                    if (newStatus === 'cancelled') {
+                      updateDoc(doc(db, 'rideRequests', req.id), { status: 'cancelled', finalStatus: 'cancelled' });
+                    } else {
+                      updateStatus(req.id, newStatus);
+                    }
+                  }}
                 >
                   <option value="pending">Pending</option>
                   <option value="matched">Matched</option>
@@ -2232,13 +2379,20 @@ function MyRequests({ user, setView }: { user: User | null, setView: (v: any, it
                     Done
                   </Button>
                 )}
+                <Button size="sm" variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => setView('edit_post', req)}>
+                  Edit
+                </Button>
                 <Button variant="destructive" size="sm" onClick={async () => {
                   if (confirm('Kya aap ye add delete karna chahte hain?')) {
                     try {
-                      await deleteDoc(doc(db, 'rideRequests', req.id));
+                      await updateDoc(doc(db, 'rideRequests', req.id), {
+                        isDeleted: true,
+                        status: 'cancelled',
+                        finalStatus: 'cancelled'
+                      });
                       toast.success('Add delete ho gaya!');
                     } catch (error) {
-                      handleFirestoreError(error, OperationType.DELETE, `rideRequests/${req.id}`);
+                      handleFirestoreError(error, OperationType.UPDATE, `rideRequests/${req.id}`);
                     }
                   }
                 }}>Delete</Button>
@@ -2269,6 +2423,7 @@ function AdminDashboard({ setView }: { setView: (v: any, item?: any) => void }) 
     visits: 0
   });
   const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [warnings, setWarnings] = useState<Warning[]>([]);
   const [drivers, setDrivers] = useState<UserProfile[]>([]);
   const [passengers, setPassengers] = useState<UserProfile[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
@@ -2309,6 +2464,11 @@ function AdminDashboard({ setView }: { setView: (v: any, item?: any) => void }) 
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'complaints');
     });
+    const unsubWarnings = onSnapshot(collection(db, 'warnings'), (snap) => {
+      setWarnings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Warning)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'warnings');
+    });
     
     const today = format(new Date(), 'yyyy-MM-dd');
     const unsubVisits = onSnapshot(doc(db, 'analytics', today), (docSnap) => {
@@ -2326,6 +2486,7 @@ function AdminDashboard({ setView }: { setView: (v: any, item?: any) => void }) 
       unsubRequests();
       unsubComplaintsCount();
       unsubVisits();
+      unsubWarnings();
     };
   }, []);
 
@@ -2379,12 +2540,13 @@ function AdminDashboard({ setView }: { setView: (v: any, item?: any) => void }) 
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="drivers">Owners</TabsTrigger>
           <TabsTrigger value="passengers">Pass.</TabsTrigger>
           <TabsTrigger value="rides">Rides</TabsTrigger>
           <TabsTrigger value="complaints">Compl.</TabsTrigger>
+          <TabsTrigger value="warnings">Warn.</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-4">
           <Card>
@@ -2474,6 +2636,53 @@ function AdminDashboard({ setView }: { setView: (v: any, item?: any) => void }) 
                     ) : (
                       <span className="text-xs text-slate-400 font-medium px-3 py-1">Resolved</span>
                     )}
+                  </CardFooter>
+                </Card>
+              ))
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="warnings" className="mt-4">
+          <div className="space-y-4">
+            {warnings.length === 0 ? (
+              <EmptyState message="Koi warning nahi mili." />
+            ) : (
+              warnings.map(warning => (
+                <Card key={warning.id} className="border-l-4 border-orange-500">
+                  <CardHeader className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <CardTitle className="text-lg">Warning to User</CardTitle>
+                        <CardDescription className="flex flex-col">
+                          <span className="text-[10px] font-mono text-slate-400">User ID: {warning.userId}</span>
+                          <span className="text-[10px]">{format(warning.createdAt?.toDate() || new Date(), 'PPp')}</span>
+                        </CardDescription>
+                      </div>
+                      <Badge variant={warning.status === 'pending' ? 'outline' : 'default'} className={warning.status === 'replied' ? 'bg-blue-500' : ''}>
+                        {warning.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0 space-y-3">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Admin Message:</p>
+                      <p className="text-slate-600 text-sm bg-slate-50 p-3 rounded-lg border border-slate-100 italic">"{warning.adminMessage}"</p>
+                    </div>
+                    {warning.userReply && (
+                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                        <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">User Reply:</p>
+                        <p className="text-sm text-blue-800">{warning.userReply}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                  <CardFooter className="p-2 bg-slate-50 flex justify-end gap-2">
+                    <Button size="sm" className="bg-orange-600 hover:bg-orange-700" onClick={() => {
+                      const u = drivers.find(d => d.uid === warning.userId) || passengers.find(p => p.uid === warning.userId);
+                      if (u) issueWarning(u);
+                    }}>
+                      Naya Message/Warning Bhejein
+                    </Button>
                   </CardFooter>
                 </Card>
               ))
