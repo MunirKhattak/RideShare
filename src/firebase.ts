@@ -1,11 +1,28 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Test connection to Firestore
+async function testConnection() {
+  try {
+    // Attempt to fetch a non-existent document from the server to test connectivity
+    await getDocFromServer(doc(db, '_connection_test_', 'ping'));
+    console.log('Firestore connection test successful');
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Firestore Configuration Error: The client is offline. This usually means the firebase-applet-config.json is incorrect or the database is not provisioned.");
+    } else {
+      console.warn('Firestore connection test notice (can be ignored if app works):', error);
+    }
+  }
+}
+testConnection();
+
 export const googleProvider = new GoogleAuthProvider();
 
 export enum OperationType {

@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef, useMemo } from 'react';
 import { auth, db, signInWithGoogle, logout, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
@@ -16,6 +16,7 @@ import {
   deleteDoc,
   limit,
   increment,
+  arrayUnion,
   getCountFromServer,
   getDocFromServer
 } from 'firebase/firestore';
@@ -30,6 +31,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { 
+  CheckCircle2,
   Car, 
   User as UserIcon, 
   Search, 
@@ -52,11 +54,16 @@ import {
   Eye,
   Info,
   Check,
-  CheckCheck
+  CheckCheck,
+  Trophy,
+  Coins,
+  Gift,
+  X
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
+import confetti from 'canvas-confetti';
 
 const trackInteraction = async (rideId: string, type: 'call' | 'whatsapp' | 'chat', collectionName: 'rides' | 'rideRequests') => {
   try {
@@ -76,6 +83,8 @@ export default function App() {
   const [activeWarning, setActiveWarning] = useState<Warning | null>(null);
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [rewardTask, setRewardTask] = useState<any>(null);
+  const [showInterstitialAd, setShowInterstitialAd] = useState(false);
 
   const [waModalData, setWaModalData] = useState<any>(null);
 
@@ -136,6 +145,81 @@ export default function App() {
     });
 
     return () => unsubs.forEach(unsub => unsub());
+  }, [user, profile]);
+
+  // Reward System Background Listener
+  useEffect(() => {
+    if (!user || !profile) return;
+
+    const q = query(
+      collection(db, 'rides'),
+      where('participants', 'array-contains', user.uid)
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      snapshot.docs.forEach(docSnap => {
+        const ride = { id: docSnap.id, ...docSnap.data() } as any;
+        
+        // Handle multiple passengers if driver, or just self if passenger
+        const rewardStatuses = ride.rewardStatus || {};
+        
+        Object.keys(rewardStatuses).forEach(pId => {
+          const status = rewardStatuses[pId];
+          if (status.rewardIssued) return;
+
+          // Only proceed if user is either the driver or this specific passenger
+          if (user.uid !== ride.driverId && user.uid !== pId) return;
+
+          const rideStartTime = new Date(`${ride.date}T${ride.time}`);
+          const now = new Date();
+          const diffMins = (now.getTime() - rideStartTime.getTime()) / (1000 * 60);
+
+          // 1. Start Confirmation (30 mins after start)
+          if (diffMins >= 30 && !status.startTimeConfirmed && user.uid === pId) {
+            setRewardTask(prev => prev?.ride?.id === ride.id && prev?.type === 'start' ? prev : {
+              ride,
+              passengerId: pId,
+              type: 'start',
+              otherUser: { name: ride.driverName, id: ride.driverId.substring(0, 4) }
+            });
+          }
+
+          // 2. Mutual Confirmation
+          const isDriver = user.uid === ride.driverId;
+          if (status.driverConfirmed && !status.passengerConfirmed && user.uid === pId) {
+            setRewardTask(prev => prev?.ride?.id === ride.id && prev?.type === 'confirm_complete' ? prev : {
+              ride,
+              passengerId: pId,
+              type: 'confirm_complete',
+              otherUser: { name: ride.driverName, id: ride.driverId.substring(0, 4) }
+            });
+          } else if (status.passengerConfirmed && !status.driverConfirmed && isDriver) {
+            setRewardTask(prev => prev?.ride?.id === ride.id && prev?.type === 'confirm_complete' && prev?.passengerId === pId ? prev : {
+              ride,
+              passengerId: pId,
+              type: 'confirm_complete',
+              otherUser: { name: status.name, id: pId.substring(0, 4) }
+            });
+          }
+
+          // 3. 5 Hours Safety Net (Auto-prompt if not completed)
+          if (diffMins >= 300 && !status.driverConfirmed && !status.passengerConfirmed) {
+             // Prompt both to complete
+             setRewardTask(prev => prev?.ride?.id === ride.id && prev?.type === 'complete' ? prev : {
+               ride,
+               passengerId: pId,
+               type: 'complete',
+               otherUser: { 
+                 name: isDriver ? status.name : ride.driverName, 
+                 id: (isDriver ? pId : ride.driverId).substring(0, 4) 
+               }
+             });
+          }
+        });
+      });
+    });
+
+    return () => unsub();
   }, [user, profile]);
 
   // Global listener for delivered messages
@@ -508,6 +592,82 @@ export default function App() {
     trackVisit();
   }, []);
 
+  const handleRewardAction = async (task: any, action: 'confirm' | 'cancel') => {
+    if (action === 'cancel') {
+      setRewardTask(null);
+      return;
+    }
+
+    if (task.ride.id === 'demo') {
+      if (task.type === 'start') setRewardTask({ ...task, type: 'complete' });
+      else if (task.type === 'complete') setRewardTask({ ...task, type: 'confirm_complete' });
+      else if (task.type === 'confirm_complete') setRewardTask({ ...task, type: 'success' });
+      else setRewardTask(null);
+      return;
+    }
+
+    try {
+      const rideRef = doc(db, task.ride.collection || 'rides', task.ride.id);
+      const rewardKey = `rewardStatus.${task.passengerId}`;
+
+      if (task.type === 'start') {
+        await updateDoc(rideRef, {
+          [`${rewardKey}.startTimeConfirmed`]: true
+        });
+        setRewardTask(null);
+        toast.success("Safar shuru hone ki tasdeeq ho gayi!");
+      } else if (task.type === 'complete') {
+        const isDriver = user?.uid === task.ride.driverId;
+        await updateDoc(rideRef, {
+          [`${rewardKey}.${isDriver ? 'driverConfirmed' : 'passengerConfirmed'}`]: true
+        });
+        setRewardTask(null);
+        toast.success("Ride completion status bhej diya gaya!");
+      } else if (task.type === 'confirm_complete') {
+        // Both confirmed, issue reward
+        const driverId = task.ride.driverId;
+        const passengerId = task.passengerId;
+        
+        const driverRef = doc(db, 'users', driverId);
+        const passengerRef = doc(db, 'users', passengerId);
+
+        // Issue rewards
+        await updateDoc(driverRef, { easyCoins: increment(20) });
+        await updateDoc(passengerRef, { easyCoins: increment(10) });
+        
+        // Mark as issued
+        await updateDoc(rideRef, {
+          [`${rewardKey}.rewardIssued`]: true,
+          [`${rewardKey}.driverConfirmed`]: true,
+          [`${rewardKey}.passengerConfirmed`]: true
+        });
+
+        // Add to history
+        await addDoc(collection(db, 'rewardHistory'), {
+          userId: driverId,
+          amount: 20,
+          type: 'earn',
+          reason: 'Ride Completion (Driver)',
+          rideId: task.ride.id,
+          timestamp: serverTimestamp()
+        });
+
+        await addDoc(collection(db, 'rewardHistory'), {
+          userId: passengerId,
+          amount: 10,
+          type: 'earn',
+          reason: 'Ride Completion (Passenger)',
+          rideId: task.ride.id,
+          timestamp: serverTimestamp()
+        });
+
+        setRewardTask({ ...task, type: 'success' });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'rides');
+    }
+  };
+
   if (loading) return <LoadingSpinner />;
 
   const renderView = () => {
@@ -517,7 +677,7 @@ export default function App() {
       case 'register':
         return <RegistrationForm user={user} role={(profile?.role as 'driver' | 'passenger') || 'passenger'} setView={setView} setProfile={setProfile} />;
       case 'dashboard':
-        return <Dashboard user={user} profile={profile} setView={setView} />;
+        return <Dashboard user={user} profile={profile} setView={setView} onDemoStart={() => setRewardTask({ ride: { id: 'demo', driverId: 'demo', driverName: 'Ali Khan', date: '2026-04-12', time: '10:00' }, passengerId: 'demo', type: 'start', otherUser: { name: 'Ali Khan', id: '4829' } })} onRewardAction={setRewardTask} />;
       case 'post':
         return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} />;
       case 'edit_post':
@@ -585,6 +745,20 @@ export default function App() {
           profile={profile} 
           onClose={() => setWaModalData(null)} 
         />
+      )}
+
+      {rewardTask && (
+        <RewardModal 
+          task={rewardTask} 
+          onConfirm={() => handleRewardAction(rewardTask, 'confirm')}
+          onClose={() => setRewardTask(null)}
+          onShowAd={() => setShowInterstitialAd(true)}
+          user={user}
+        />
+      )}
+
+      {showInterstitialAd && (
+        <InterstitialAd onClose={() => setShowInterstitialAd(false)} />
       )}
 
       {/* Sign In Modal */}
@@ -715,6 +889,196 @@ function Header({ user, setView, onSignInClick, onInstall }: { user: User | null
         </div>
       </div>
     </header>
+  );
+}
+
+function InterstitialAd({ onClose }: { onClose: () => void }) {
+  const [timeLeft, setTimeLeft] = useState(5);
+  const [canClose, setCanClose] = useState(false);
+
+  useEffect(() => {
+    if (timeLeft > 0) {
+      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+      return () => clearTimeout(timer);
+    } else {
+      setCanClose(true);
+    }
+  }, [timeLeft]);
+
+  return (
+    <div className="fixed inset-0 z-[10000] bg-black flex flex-col">
+      <div className="absolute top-4 right-4 z-10">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="text-white bg-white/10 hover:bg-white/20 rounded-full h-10 w-10 p-0"
+          onClick={() => canClose && onClose()}
+          disabled={!canClose}
+        >
+          {canClose ? <X className="w-6 h-6" /> : <span className="text-xs font-bold">{timeLeft}</span>}
+        </Button>
+      </div>
+      
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-8">
+        <div className="space-y-2">
+          <Badge className="bg-yellow-500 text-black font-bold px-3 py-1">PREMIUM AD</Badge>
+          <h2 className="text-3xl font-black text-white leading-tight">Dhamaka Offer! <br/> <span className="text-blue-400">Abhi Click Karein</span></h2>
+          <p className="text-slate-400 text-sm">Ye ad dekhne se aap ki earning mein izafa hota hai.</p>
+        </div>
+
+        <div className="w-full max-w-xs aspect-[4/5] bg-gradient-to-br from-blue-600 to-indigo-900 rounded-3xl shadow-2xl overflow-hidden relative group cursor-pointer border-4 border-white/10" onClick={() => window.open('https://www.google.com', '_blank')}>
+          <img 
+            src="https://picsum.photos/seed/ads/800/1000" 
+            alt="Premium Ad" 
+            className="w-full h-full object-cover opacity-80 group-hover:scale-110 transition-transform duration-700"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-6 text-left">
+            <h4 className="text-white font-bold text-xl mb-1">EasyTravel Premium</h4>
+            <p className="text-white/70 text-xs mb-4">Sasta aur safe safar, sirf hamare sath. Click kar ke mazeed janey!</p>
+            <Button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold h-12 rounded-xl shadow-lg">
+              Visit Now
+            </Button>
+          </div>
+          <div className="absolute top-3 left-3 bg-black/40 backdrop-blur-md px-2 py-1 rounded text-[10px] text-white/80 font-medium">
+            Sponsored
+          </div>
+        </div>
+
+        <div className="text-slate-500 text-[10px] max-w-xs">
+          *Ad par click karne se system ko support milti hai aur aap ko behtar services milti hain.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RewardModal({ task, onConfirm, onClose, user, onShowAd }: { task: any, onConfirm: () => void, onClose: () => void, user: any, onShowAd?: () => void }) {
+  const { state, type } = task;
+  const displayType = type || task.type;
+  const adTriggered = useRef(false);
+
+  useEffect(() => {
+    if (displayType === 'success') {
+      const duration = 3 * 1000;
+      const animationEnd = Date.now() + duration;
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+
+      const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
+
+      const interval: any = setInterval(function() {
+        const timeLeft = animationEnd - Date.now();
+
+        if (timeLeft <= 0) {
+          return clearInterval(interval);
+        }
+
+        const particleCount = 50 * (timeLeft / duration);
+        confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
+        confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
+      }, 250);
+
+      // Intercept back button
+      window.history.pushState({ modal: 'reward-success' }, '');
+      const handlePopState = () => {
+        if (!adTriggered.current) {
+          adTriggered.current = true;
+          onClose();
+          if (onShowAd) onShowAd();
+        }
+      };
+      window.addEventListener('popstate', handlePopState);
+
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        if (interval) clearInterval(interval);
+      };
+    }
+  }, [displayType, onClose, onShowAd]);
+
+  const handleFinalAction = () => {
+    if (!adTriggered.current) {
+      adTriggered.current = true;
+      // If we're still on the dummy state, go back to clean history
+      if (window.history.state?.modal === 'reward-success') {
+        window.history.back();
+      }
+      onClose();
+      if (onShowAd) onShowAd();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl"
+      >
+        {displayType === 'start' && (
+          <div className="p-8 text-center space-y-6">
+            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto animate-bounce">
+              <Clock className="w-10 h-10 text-blue-600" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-2xl font-bold text-slate-900">Safar Shuru?</h3>
+              <p className="text-slate-500">
+                Kya aap ne <b>{user?.uid === task.ride.driverId ? 'Passenger' : 'Car Owner'}: {task.otherUser?.name || 'User'} (ID: {task.otherUser?.id || 'N/A'})</b> ke sath safar shuru kar diya hai?
+              </p>
+              <p className="text-xs text-blue-600 font-medium">Safar Complete hone par Apna Reward collect krna na bhoolen</p>
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button className="h-14 rounded-2xl bg-blue-600 text-lg font-bold" onClick={onConfirm}>Haan, Shuru ho gaya</Button>
+              <Button variant="ghost" className="text-slate-400" onClick={onClose}>Abhi nahi</Button>
+            </div>
+          </div>
+        )}
+
+        {(displayType === 'complete' || displayType === 'confirm_complete') && (
+          <div className="p-8 text-center space-y-6">
+            <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
+              <MapPin className="w-10 h-10 text-orange-600" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-2xl font-bold text-slate-900">Ride Mukammal?</h3>
+              <p className="text-slate-500">
+                {displayType === 'confirm_complete' 
+                  ? `User ${task.otherUser?.name || 'User'} ne ride mukammal honay ka status diya hai. Kya aap confirm karte hain?`
+                  : `Kya aap ${task.otherUser?.name || 'User'} ke sath ride mukammal karna chahte hain?`
+                }
+              </p>
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button className="h-14 rounded-2xl bg-emerald-600 text-lg font-bold" onClick={onConfirm}>Haan, Confirm Karein</Button>
+              <Button variant="ghost" className="text-slate-400" onClick={onClose}>Wapas</Button>
+            </div>
+          </div>
+        )}
+
+        {displayType === 'success' && (
+          <div className="p-8 text-center space-y-6 relative">
+            <div className="w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mx-auto shadow-inner">
+              <Trophy className="w-12 h-12 text-yellow-600" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-3xl font-black text-slate-900">Mubarak Ho!</h3>
+              <p className="text-slate-600 font-medium">Aap ne kamyab ride par <span className="text-blue-600 font-bold">{user?.uid === task.ride.driverId ? '20' : '10'} EasyCoins</span> kama liye hain!</p>
+              <p className="text-sm text-emerald-600 font-bold">Abhi Dashboard me jaaen aur apne Credit Coins check kr len</p>
+            </div>
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 text-sm">Reward Status:</span>
+                <div className="flex items-center gap-1 text-blue-700 font-bold">
+                  <Coins className="w-4 h-4" />
+                  <span>Coins Added!</span>
+                </div>
+              </div>
+            </div>
+            <Button className="w-full h-14 rounded-2xl bg-slate-900 text-lg font-bold" onClick={handleFinalAction}>Shukriya!</Button>
+          </div>
+        )}
+      </motion.div>
+    </div>
   );
 }
 
@@ -900,6 +1264,7 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
         phoneNumber: formData.whatsappNumber, // Use WhatsApp number as phone number
         whatsappNumber: formData.whatsappNumber,
         role: selectedRole,
+        easyCoins: 0,
         createdAt: serverTimestamp(),
       };
       await setDoc(doc(db, 'users', user.uid), newProfile);
@@ -988,6 +1353,20 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function AdSlot({ label = "Sponsored Ad" }: { label?: string }) {
+  return (
+    <div className="w-full bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-4 flex flex-col items-center justify-center min-h-[100px] my-4 group hover:border-blue-200 transition-colors">
+      <div className="flex items-center gap-2 mb-1">
+        <Sparkles className="w-3 h-3 text-slate-400 group-hover:text-blue-400" />
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</span>
+      </div>
+      <div className="text-xs text-slate-400 text-center italic">
+        Yahan Google Ad nazar aayega
+      </div>
+    </div>
   );
 }
 
@@ -1216,27 +1595,170 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
   );
 }
 
-function Dashboard({ user, profile, setView }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void }) {
+function Dashboard({ user, profile, setView, onDemoStart, onRewardAction }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, onDemoStart: () => void, onRewardAction: (task: any) => void }) {
   const userRole = profile?.role || 'passenger';
+  const [activeRides, setActiveRides] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'rides'),
+      where('participants', 'array-contains', user.uid)
+    );
+    return onSnapshot(q, (snap) => {
+      const rides = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setActiveRides(rides);
+    });
+  }, [user]);
+
+  const rewardTasks = useMemo(() => {
+    if (!user) return [];
+    const tasks: any[] = [];
+    activeRides.forEach(ride => {
+      const isDriver = user.uid === ride.driverId;
+      if (isDriver) {
+        // Driver sees all passengers in this ride
+        Object.entries(ride.rewardStatus || {}).forEach(([pId, status]: [string, any]) => {
+          if (!status.rewardIssued) {
+            tasks.push({
+              ride,
+              passengerId: pId,
+              status,
+              isDriver: true
+            });
+          }
+        });
+      } else {
+        // Passenger sees only their own status in this ride
+        const status = ride.rewardStatus?.[user.uid];
+        if (status && !status.rewardIssued) {
+          tasks.push({
+            ride,
+            passengerId: user.uid,
+            status,
+            isDriver: false
+          });
+        }
+      }
+    });
+    return tasks;
+  }, [activeRides, user]);
+
   return (
     <div className="space-y-6 py-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
-          <Button 
-            variant="outline" 
-            size="lg" 
-            className="rounded-full h-12 px-6 text-sm gap-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-            onClick={() => setView('edit_profile')}
-          >
-            <UserIcon className="w-4 h-4" />
-            Profile
-          </Button>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
+            <Badge className={userRole === 'driver' ? 'bg-blue-600' : 'bg-orange-500'}>
+              {userRole === 'driver' ? 'Car Owner' : 'Passenger'}
+            </Badge>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger className="group/button inline-flex shrink-0 items-center justify-center rounded-full border border-yellow-200 bg-yellow-50 text-yellow-700 hover:bg-yellow-100 gap-2 h-9 px-3 text-sm font-medium transition-all outline-none select-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50">
+                <Coins className="w-4 h-4" />
+                <span className="font-bold">{profile?.easyCoins || 0}</span>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-4 rounded-2xl shadow-xl border-none">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-slate-900">EasyRewards</h4>
+                    <Gift className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <p className="text-xs text-slate-500 mb-1">Available Balance</p>
+                    <div className="flex items-center gap-2">
+                      <Coins className="w-5 h-5 text-yellow-500" />
+                      <span className="text-2xl font-black text-slate-900">{profile?.easyCoins || 0}</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    <Button size="sm" className="w-full bg-blue-600 rounded-lg" onClick={onDemoStart}>Reward Demo</Button>
+                    <Button size="sm" variant="outline" className="w-full rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => onRewardAction({ 
+                      ride: { id: 'demo', driverId: 'demo', driverName: 'Ali Khan', date: '2026-04-12', time: '10:00' }, 
+                      passengerId: 'demo', 
+                      type: 'success', 
+                      otherUser: { name: 'Ali Khan', id: '4829' } 
+                    })}>Ad Demo Dekhen</Button>
+                    <Button size="sm" variant="ghost" className="w-full rounded-lg text-slate-400">Redeem Coins</Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="rounded-full h-9 px-4 text-xs gap-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+              onClick={() => setView('edit_profile')}
+            >
+              <UserIcon className="w-3 h-3" />
+              Profile
+            </Button>
+          </div>
         </div>
-        <Badge className={userRole === 'driver' ? 'bg-blue-600' : 'bg-orange-500'}>
-          {userRole === 'driver' ? 'Car Owner' : 'Passenger'}
-        </Badge>
       </div>
+
+      {rewardTasks.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider px-1">Active Rides & Rewards</h3>
+          <div className="grid grid-cols-1 gap-3">
+            {rewardTasks.map((task, idx) => {
+              const { ride, passengerId, status, isDriver } = task;
+              const myConfirmed = isDriver ? status.driverConfirmed : status.passengerConfirmed;
+              const otherConfirmed = isDriver ? status.passengerConfirmed : status.driverConfirmed;
+
+              return (
+                <Card key={`${ride.id}-${passengerId}-${idx}`} className="border-none shadow-md overflow-hidden bg-white">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="bg-blue-50 p-2 rounded-xl">
+                          {isDriver ? <Users className="w-5 h-5 text-blue-600" /> : <Car className="w-5 h-5 text-blue-600" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-slate-900 truncate">
+                            {isDriver ? `Passenger: ${status.name}` : `${ride.origin} to ${ride.destination}`}
+                            {otherConfirmed && <span className="ml-2 text-[10px] text-emerald-600 font-normal">(Completed ✓)</span>}
+                          </p>
+                          <p className="text-[10px] text-slate-500">
+                            {isDriver ? `${ride.origin} to ${ride.destination}` : `${ride.date} • ${ride.time}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        {!myConfirmed ? (
+                          <Button 
+                            size="sm" 
+                            className="bg-emerald-600 hover:bg-emerald-700 h-8 rounded-lg text-xs font-bold px-3"
+                            onClick={() => onRewardAction({
+                              ride,
+                              passengerId,
+                              type: otherConfirmed ? 'confirm_complete' : 'complete',
+                              otherUser: { 
+                                name: isDriver ? status.name : ride.driverName,
+                                id: (isDriver ? passengerId : ride.driverId).substring(0, 4)
+                              }
+                            })}
+                          >
+                            Complete Ride
+                          </Button>
+                        ) : (
+                          <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200 h-8 px-3 rounded-lg">
+                            {otherConfirmed ? 'Processing...' : 'Waiting for other user...'}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5">
         <Button 
@@ -1289,6 +1811,7 @@ function Dashboard({ user, profile, setView }: { user: User | null, profile: Use
           Messages (Chat)
         </Button>
       </div>
+      <AdSlot label="Dashboard Ad" />
     </div>
   );
 }
@@ -1436,41 +1959,44 @@ function RouteSearch({ setView, userRole, onWhatsAppClick }: { setView: (v: any,
           {results.length === 0 ? (
             <EmptyState message="Filhal koi post nahi mili." />
           ) : (
-            results.map(item => (
-              <Card key={item.id} className="hover:border-blue-400 cursor-pointer" onClick={() => setView('profile_view', item)}>
-                <CardHeader className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarImage src={item.driverPhoto || item.passengerPhoto} />
-                        <AvatarFallback>U</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <CardTitle className="text-base">{item.driverName || item.passengerName}</CardTitle>
-                        <CardDescription>{item.date} | {item.time}</CardDescription>
+            results.map((item, index) => (
+              <div key={item.id}>
+                <Card className="hover:border-blue-400 cursor-pointer" onClick={() => setView('profile_view', item)}>
+                  <CardHeader className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Avatar>
+                          <AvatarImage src={item.driverPhoto || item.passengerPhoto} />
+                          <AvatarFallback>U</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <CardTitle className="text-base">{item.driverName || item.passengerName}</CardTitle>
+                          <CardDescription>{item.date} | {item.time}</CardDescription>
+                        </div>
                       </div>
+                      {item.price && <div className="font-bold text-blue-600">Rs. {item.price}</div>}
                     </div>
-                    {item.price && <div className="font-bold text-blue-600">Rs. {item.price}</div>}
-                  </div>
-                </CardHeader>
-                <CardFooter className="p-2 bg-slate-50 flex gap-2">
-                  <Button variant="ghost" size="sm" className="flex-1 gap-1" onClick={(e) => { 
-                    e.stopPropagation(); 
-                    trackInteraction(item.id, 'call', userRole === 'driver' ? 'rideRequests' : 'rides');
-                    window.open(`tel:${item.whatsappNumber}`, '_self'); 
-                  }}><Phone className="w-3 h-3" /> Call</Button>
-                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-green-600" onClick={(e) => { 
-                    e.stopPropagation(); 
-                    trackInteraction(item.id, 'whatsapp', userRole === 'driver' ? 'rideRequests' : 'rides');
-                    onWhatsAppClick(item); 
-                  }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
-                  <Button variant="ghost" size="sm" className="flex-1 gap-1 text-blue-600" onClick={(e) => { 
-                    e.stopPropagation(); 
-                    trackInteraction(item.id, 'chat', userRole === 'driver' ? 'rideRequests' : 'rides');
-                    setView('chat', item); 
-                  }}><MessageSquare className="w-3 h-3" /> Chat</Button>
-                </CardFooter>
-              </Card>
+                  </CardHeader>
+                  <CardFooter className="p-2 bg-slate-50 flex gap-2">
+                    <Button variant="ghost" size="sm" className="flex-1 gap-1" onClick={(e) => { 
+                      e.stopPropagation(); 
+                      trackInteraction(item.id, 'call', userRole === 'driver' ? 'rideRequests' : 'rides');
+                      window.open(`tel:${item.whatsappNumber}`, '_self'); 
+                    }}><Phone className="w-3 h-3" /> Call</Button>
+                    <Button variant="ghost" size="sm" className="flex-1 gap-1 text-green-600" onClick={(e) => { 
+                      e.stopPropagation(); 
+                      trackInteraction(item.id, 'whatsapp', userRole === 'driver' ? 'rideRequests' : 'rides');
+                      onWhatsAppClick(item); 
+                    }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
+                    <Button variant="ghost" size="sm" className="flex-1 gap-1 text-blue-600" onClick={(e) => { 
+                      e.stopPropagation(); 
+                      trackInteraction(item.id, 'chat', userRole === 'driver' ? 'rideRequests' : 'rides');
+                      setView('chat', item); 
+                    }}><MessageSquare className="w-3 h-3" /> Chat</Button>
+                  </CardFooter>
+                </Card>
+                {index === 1 && <AdSlot label="Search Result Ad" />}
+              </div>
             ))
           )}
         </div>
@@ -1608,8 +2134,8 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    const collectionName = type === 'ride' ? 'rides' : 'rideRequests';
     try {
-      const collectionName = type === 'ride' ? 'rides' : 'rideRequests';
       const data = type === 'ride' ? {
         driverId: user.uid,
         driverName: user.displayName,
@@ -1875,6 +2401,30 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
     return () => unsub();
   }, [user, otherUserId, rideItem?.id]);
 
+  const isDriver = user.uid === rideItem.driverId;
+  const isPassengerAlreadyAdded = rideItem.participants?.includes(otherUserId);
+
+  const handleConfirmRide = async () => {
+    if (!isDriver || isPassengerAlreadyAdded || !otherUserId) return;
+    
+    try {
+      const rideRef = doc(db, 'rides', rideItem.id);
+      await updateDoc(rideRef, {
+        participants: arrayUnion(user.uid, otherUserId),
+        [`rewardStatus.${otherUserId}`]: {
+          name: otherUserName,
+          driverConfirmed: false,
+          passengerConfirmed: false,
+          rewardIssued: false,
+          startTimeConfirmed: false
+        }
+      });
+      toast.success(`${otherUserName} ko ride mein shamil kar liya gaya hai!`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'rides');
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !newMessage.trim() || !otherUserId || !rideItem) return;
@@ -1925,6 +2475,16 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
           <CardTitle className="text-lg truncate">{otherUserName || 'User'}</CardTitle>
           <p className="text-xs text-slate-500 truncate">{rideItem.origin} to {rideItem.destination}</p>
         </div>
+        {isDriver && !isPassengerAlreadyAdded && (
+          <Button 
+            size="sm" 
+            className="bg-emerald-600 hover:bg-emerald-700 text-[10px] h-8 px-2 rounded-lg gap-1"
+            onClick={handleConfirmRide}
+          >
+            <CheckCircle2 className="w-3 h-3" />
+            Confirm Ride
+          </Button>
+        )}
       </CardHeader>
       
       <CardContent className="flex-1 p-0 bg-slate-50">
@@ -2046,10 +2606,14 @@ function Inbox({ user, setView }: { user: User | null, setView: (v: any, item?: 
           </div>
         ) : (
           chats.map((chat, idx) => (
-            <ChatListItem key={idx} chat={chat} user={user} setView={setView} />
+            <div key={idx}>
+              <ChatListItem chat={chat} user={user} setView={setView} />
+              {idx === 0 && chats.length > 2 && <AdSlot label="Inbox Ad" />}
+            </div>
           ))
         )}
       </div>
+      {chats.length > 0 && <AdSlot label="Footer Ad" />}
     </div>
   );
 }

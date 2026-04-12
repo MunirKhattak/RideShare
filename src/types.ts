@@ -8,7 +8,18 @@ export interface UserProfile {
   whatsappNumber?: string;
   role: 'driver' | 'passenger' | 'both' | 'admin';
   bio?: string;
+  easyCoins?: number;
   createdAt: any;
+}
+
+export interface RewardHistory {
+  id: string;
+  userId: string;
+  amount: number;
+  type: 'earn' | 'redeem';
+  reason: string;
+  rideId?: string;
+  timestamp: any;
 }
 
 export interface Ride {
@@ -25,6 +36,7 @@ export interface Ride {
   availableSeats: number;
   price: number;
   status: 'available' | 'full' | 'completed' | 'cancelled';
+  participants?: string[];
   interactions?: {
     call: number;
     whatsapp: number;
@@ -32,6 +44,15 @@ export interface Ride {
   };
   finalStatus?: 'done' | 'cancelled' | 'late' | 'pending';
   statusReportedAt?: any;
+  rewardStatus?: {
+    [passengerId: string]: {
+      name: string;
+      driverConfirmed: boolean;
+      passengerConfirmed: boolean;
+      rewardIssued: boolean;
+      startTimeConfirmed: boolean;
+    }
+  };
   createdAt: any;
   isDeleted?: boolean;
 }
@@ -46,6 +67,7 @@ export interface RideRequest {
   date: string;
   time: string;
   status: 'pending' | 'matched' | 'cancelled';
+  participants?: string[];
   interactions?: {
     call: number;
     whatsapp: number;
@@ -53,6 +75,15 @@ export interface RideRequest {
   };
   finalStatus?: 'done' | 'cancelled' | 'late' | 'pending';
   statusReportedAt?: any;
+  rewardStatus?: {
+    [passengerId: string]: {
+      name: string;
+      driverConfirmed: boolean;
+      passengerConfirmed: boolean;
+      rewardIssued: boolean;
+      startTimeConfirmed: boolean;
+    }
+  };
   createdAt: any;
   isDeleted?: boolean;
 }

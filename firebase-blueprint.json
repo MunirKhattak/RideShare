@@ -13,6 +13,7 @@
         "whatsappNumber": { "type": "string" },
         "role": { "type": "string", "enum": ["driver", "passenger", "both"] },
         "bio": { "type": "string" },
+        "easyCoins": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "displayName"]
@@ -35,8 +36,10 @@
         "availableSeats": { "type": "number" },
         "price": { "type": "number" },
         "status": { "type": "string", "enum": ["available", "full", "completed", "cancelled"] },
+        "participants": { "type": "array", "items": { "type": "string" } },
         "finalStatus": { "type": "string", "enum": ["pending", "done", "cancelled", "late"] },
         "interactions": { "type": "object" },
+        "rewardStatus": { "type": "object" },
         "statusReportedAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -56,12 +59,29 @@
         "date": { "type": "string", "format": "date" },
         "time": { "type": "string" },
         "status": { "type": "string", "enum": ["pending", "matched", "cancelled"] },
+        "participants": { "type": "array", "items": { "type": "string" } },
         "finalStatus": { "type": "string", "enum": ["pending", "done", "cancelled", "late"] },
         "interactions": { "type": "object" },
+        "rewardStatus": { "type": "object" },
         "statusReportedAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["passengerId", "origin", "destination", "date", "time"]
+    },
+    "RewardHistory": {
+      "title": "RewardHistory",
+      "description": "History of earned and redeemed coins",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["earn", "redeem"] },
+        "reason": { "type": "string" },
+        "rideId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "amount", "type", "reason", "timestamp"]
     },
     "ChatMessage": {
       "title": "ChatMessage",
@@ -153,6 +173,10 @@
     "/warnings/{warningId}": {
       "schema": "Warning",
       "description": "Admin warnings and user replies"
+    },
+    "/rewardHistory/{rewardId}": {
+      "schema": "RewardHistory",
+      "description": "History of user rewards"
     }
   }
 }
