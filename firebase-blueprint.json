@@ -139,6 +139,30 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "adminMessage", "status", "createdAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A booking for a ride or a passenger request",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "rideId": { "type": "string" },
+        "driverId": { "type": "string" },
+        "passengerId": { "type": "string" },
+        "passengerName": { "type": "string" },
+        "driverName": { "type": "string" },
+        "seats": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
+        "type": { "type": "string", "enum": ["ride_booking", "request_booking"] },
+        "origin": { "type": "string" },
+        "destination": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "passengerWhatsapp": { "type": "string" },
+        "driverWhatsapp": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["rideId", "driverId", "passengerId", "seats", "status", "type", "createdAt"]
     }
   },
   "firestore": {
@@ -177,6 +201,10 @@
     "/rewardHistory/{rewardId}": {
       "schema": "RewardHistory",
       "description": "History of user rewards"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Ride bookings between drivers and passengers"
     }
   }
 }

@@ -20,7 +20,7 @@ import {
   getCountFromServer,
   getDocFromServer
 } from 'firebase/firestore';
-import { UserProfile, Ride, RideRequest, ChatMessage, Complaint, Analytics, Warning } from './types';
+import { UserProfile, Ride, RideRequest, ChatMessage, Complaint, Analytics, Warning, Booking } from './types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -85,6 +85,8 @@ export default function App() {
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [rewardTask, setRewardTask] = useState<any>(null);
+  const [bookingTask, setBookingTask] = useState<any>(null);
+  const [activeBookings, setActiveBookings] = useState<Booking[]>([]);
   const [showInterstitialAd, setShowInterstitialAd] = useState(false);
 
   const [waModalData, setWaModalData] = useState<any>(null);
@@ -795,6 +797,35 @@ export default function App() {
       });
     }
 
+    // Bookings Listener
+    const qBookings = query(
+      collection(db, 'bookings'),
+      where('participants', 'array-contains', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+    let initBookings = true;
+    const unsubBookings = onSnapshot(qBookings, (snapshot) => {
+      const bookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      setActiveBookings(bookings);
+
+      if (initBookings) { initBookings = false; return; }
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const booking = change.doc.data() as Booking;
+          if (booking.driverId === user.uid) {
+            sendNotification('New Booking!', `${booking.passengerName} ne aap ki seat book ki hai.`);
+          }
+        } else if (change.type === 'modified') {
+          const booking = change.doc.data() as Booking;
+          if (booking.status === 'confirmed' && booking.passengerId === user.uid) {
+            sendNotification('Booking Confirmed!', `${booking.driverName} ne aap ki booking confirm kar di hai.`);
+          }
+        }
+      });
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'bookings');
+    });
+
     return () => {
       unsubNewRequests();
       unsubMyRequests();
@@ -802,6 +833,7 @@ export default function App() {
       unsubNewRides();
       unsubAdminComplaints();
       unsubAdminWarnings();
+      unsubBookings();
     };
   }, [user, profile]);
 
@@ -833,6 +865,71 @@ export default function App() {
     };
     trackVisit();
   }, []);
+
+  const handleCreateBooking = async (ride: Ride | RideRequest, seats: number) => {
+    if (!user || !profile) return;
+    try {
+      const isRideOffer = 'availableSeats' in ride;
+      const bookingData: any = {
+        rideId: ride.id,
+        driverId: isRideOffer ? (ride as Ride).driverId : user.uid,
+        passengerId: isRideOffer ? user.uid : (ride as RideRequest).passengerId,
+        passengerName: isRideOffer ? profile.displayName : (ride as RideRequest).passengerName,
+        driverName: isRideOffer ? (ride as Ride).driverName : profile.displayName,
+        seats,
+        status: 'pending',
+        type: isRideOffer ? 'ride_booking' : 'request_booking',
+        participants: [isRideOffer ? (ride as Ride).driverId : user.uid, isRideOffer ? user.uid : (ride as RideRequest).passengerId],
+        origin: ride.origin,
+        destination: ride.destination,
+        date: ride.date,
+        time: ride.time,
+        passengerWhatsapp: isRideOffer ? profile.whatsappNumber : (ride as RideRequest).whatsappNumber,
+        driverWhatsapp: isRideOffer ? (ride as Ride).whatsappNumber : profile.whatsappNumber,
+        createdAt: serverTimestamp()
+      };
+
+      await addDoc(collection(db, 'bookings'), bookingData);
+      setBookingTask(null);
+      toast.success("Booking request bhej di gayi hai!");
+    } catch (error) {
+      console.error("Error creating booking:", error);
+      toast.error("Booking nahi ho saki.");
+    }
+  };
+
+  const handleUpdateBookingStatus = async (bookingId: string, status: 'confirmed' | 'cancelled') => {
+    try {
+      const bookingRef = doc(db, 'bookings', bookingId);
+      const bookingSnap = await getDoc(bookingRef);
+      if (!bookingSnap.exists()) return;
+      const bookingData = bookingSnap.data() as Booking;
+
+      await updateDoc(bookingRef, { status });
+
+      if (status === 'confirmed') {
+        if (bookingData.type === 'ride_booking') {
+          const rideRef = doc(db, 'rides', bookingData.rideId);
+          await updateDoc(rideRef, {
+            availableSeats: increment(-bookingData.seats),
+            participants: arrayUnion(bookingData.passengerId)
+          });
+        } else {
+          const requestRef = doc(db, 'rideRequests', bookingData.rideId);
+          await updateDoc(requestRef, {
+            status: 'matched',
+            participants: arrayUnion(bookingData.driverId)
+          });
+        }
+        toast.success("Booking confirm ho gayi!");
+      } else {
+        toast.info("Booking cancel kar di gayi.");
+      }
+    } catch (error) {
+      console.error("Error updating booking status:", error);
+      toast.error("Status update nahi ho saka.");
+    }
+  };
 
   const handleRewardAction = async (task: any, action: 'confirm' | 'cancel') => {
     if (action === 'cancel') {
@@ -905,6 +1002,8 @@ export default function App() {
             })} 
             onRewardAction={setRewardTask}
             onCompleteRide={setRewardTask}
+            activeBookings={activeBookings}
+            onUpdateBookingStatus={handleUpdateBookingStatus}
           />
         );
       case 'post':
@@ -914,7 +1013,12 @@ export default function App() {
       case 'search':
         return <RouteSearch setView={setView} userRole={(profile?.role as 'driver' | 'passenger') || 'passenger'} onWhatsAppClick={setWaModalData} />;
       case 'profile_view':
-        return <DetailedProfileView item={selectedItem} setView={setView} onWhatsAppClick={setWaModalData} />;
+        return <DetailedProfileView 
+          item={selectedItem} 
+          setView={setView} 
+          onWhatsAppClick={setWaModalData} 
+          onBookClick={(item) => setBookingTask(item)}
+        />;
       case 'chat':
         return <Chat user={user} item={selectedItem} setView={setView} />;
       case 'messages':
@@ -983,6 +1087,15 @@ export default function App() {
           onClose={() => setRewardTask(null)}
           onShowAd={() => setShowInterstitialAd(true)}
           user={user}
+        />
+      )}
+
+      {bookingTask && (
+        <BookingModal 
+          ride={bookingTask} 
+          user={user} 
+          onClose={() => setBookingTask(null)} 
+          onConfirm={(seats) => handleCreateBooking(bookingTask, seats)} 
         />
       )}
 
@@ -1182,6 +1295,89 @@ function InterstitialAd({ onClose }: { onClose: () => void }) {
   );
 }
 
+function BookingModal({ 
+  ride, 
+  user, 
+  onClose, 
+  onConfirm 
+}: { 
+  ride: Ride | RideRequest, 
+  user: User | null, 
+  onClose: () => void, 
+  onConfirm: (seats: number) => void 
+}) {
+  const [seats, setSeats] = useState(1);
+  const isRideOffer = 'availableSeats' in ride;
+  const maxSeats = isRideOffer ? (ride as Ride).availableSeats : 4; // Default max for requests
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        className="bg-white rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl border border-slate-100 p-8 space-y-6"
+      >
+        <div className="text-center space-y-2">
+          <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mx-auto mb-4">
+            <Car className="w-10 h-10 text-blue-600" />
+          </div>
+          <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+            {isRideOffer ? 'Seat Book Karein' : 'Passenger Book Karein'}
+          </h3>
+          <p className="text-slate-500 text-sm">
+            {isRideOffer 
+              ? `Aap ${ride.origin} se ${ride.destination} tak ki seat book kar rahe hain.`
+              : `Aap ${(ride as RideRequest).passengerName} ki request confirm kar rahe hain.`
+            }
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <span className="font-bold text-slate-700">Available Seats:</span>
+            <Badge className="bg-blue-600 text-white font-bold">{maxSeats}</Badge>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-slate-600 font-bold ml-1">Kitni seats chahiye?</Label>
+            <div className="flex items-center gap-4">
+              <Button 
+                variant="outline" 
+                className="h-12 w-12 rounded-xl border-slate-200"
+                onClick={() => setSeats(Math.max(1, seats - 1))}
+              >
+                -
+              </Button>
+              <div className="flex-1 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-xl font-black text-slate-900">
+                {seats}
+              </div>
+              <Button 
+                variant="outline" 
+                className="h-12 w-12 rounded-xl border-slate-200"
+                onClick={() => setSeats(Math.min(maxSeats, seats + 1))}
+              >
+                +
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 pt-2">
+          <Button 
+            className="h-16 rounded-2xl bg-blue-600 hover:bg-blue-700 text-xl font-black shadow-lg shadow-blue-200 transition-all active:scale-95"
+            onClick={() => onConfirm(seats)}
+          >
+            Confirm Booking
+          </Button>
+          <Button variant="ghost" className="text-slate-400 font-bold hover:text-slate-600" onClick={onClose}>
+            Wapas
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 function RewardModal({ task, onConfirm, onClose, user, onShowAd }: { task: any, onConfirm: () => void, onClose: () => void, user: any, onShowAd?: () => void }) {
   const { state, type } = task;
   const displayType = type || task.type;
@@ -1329,6 +1525,94 @@ function RewardModal({ task, onConfirm, onClose, user, onShowAd }: { task: any, 
         )}
       </motion.div>
     </div>
+  );
+}
+
+function NewBookingCard({ 
+  booking, 
+  user, 
+  onAction 
+}: { 
+  booking: Booking, 
+  user: User | null, 
+  onAction: (id: string, status: 'confirmed' | 'cancelled') => void 
+}) {
+  const isDriver = user?.uid === booking.driverId;
+  const otherUserName = isDriver ? booking.passengerName : booking.driverName;
+  const otherUserWhatsapp = isDriver ? booking.passengerWhatsapp : booking.driverWhatsapp;
+
+  return (
+    <Card className="border-none shadow-lg overflow-hidden bg-white border-l-4 border-emerald-500">
+      <CardContent className="p-5">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-emerald-50 p-2 rounded-xl">
+                <Badge className="bg-emerald-600 text-white font-bold">New Booking</Badge>
+              </div>
+              <div>
+                <p className="text-sm font-black text-slate-900">{otherUserName}</p>
+                <p className="text-[10px] text-slate-500">{booking.origin} to {booking.destination}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-bold text-slate-900">{booking.seats} Seats</p>
+              <p className="text-[10px] text-slate-500">{booking.date} • {booking.time}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {otherUserWhatsapp && (
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="flex-1 h-10 rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 gap-2"
+                onClick={() => window.open(`https://wa.me/${otherUserWhatsapp}`, '_blank')}
+              >
+                <MessageCircle className="w-4 h-4" />
+                WhatsApp
+              </Button>
+            )}
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="flex-1 h-10 rounded-xl border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 gap-2"
+              onClick={() => {/* In-app chat logic */}}
+            >
+              <MessageSquare className="w-4 h-4" />
+              Chat
+            </Button>
+          </div>
+
+          {booking.status === 'pending' && isDriver && (
+            <div className="flex items-center gap-2 pt-2">
+              <Button 
+                className="flex-1 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md"
+                onClick={() => onAction(booking.id, 'confirmed')}
+              >
+                Confirm
+              </Button>
+              <Button 
+                variant="ghost" 
+                className="flex-1 h-12 rounded-xl text-slate-400 font-bold hover:text-rose-600"
+                onClick={() => onAction(booking.id, 'cancelled')}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          {booking.status === 'confirmed' && (
+            <div className="bg-emerald-50 p-3 rounded-xl text-center">
+              <p className="text-emerald-700 font-bold text-sm flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                Booking Confirmed!
+              </p>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1845,7 +2129,25 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
   );
 }
 
-function Dashboard({ user, profile, setView, onDemoStart, onRewardAction, onCompleteRide }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, onDemoStart: () => void, onRewardAction: (task: any) => void, onCompleteRide: (task: any) => void }) {
+function Dashboard({ 
+  user, 
+  profile, 
+  setView, 
+  onDemoStart, 
+  onRewardAction, 
+  onCompleteRide,
+  activeBookings,
+  onUpdateBookingStatus
+}: { 
+  user: User | null, 
+  profile: UserProfile | null, 
+  setView: (v: any, item?: any) => void, 
+  onDemoStart: () => void, 
+  onRewardAction: (task: any) => void, 
+  onCompleteRide: (task: any) => void,
+  activeBookings: Booking[],
+  onUpdateBookingStatus: (id: string, status: 'confirmed' | 'cancelled') => void
+}) {
   const userRole = profile?.role || 'passenger';
   const [activeRides, setActiveRides] = useState<any[]>([]);
 
@@ -1923,6 +2225,22 @@ function Dashboard({ user, profile, setView, onDemoStart, onRewardAction, onComp
           </div>
         </div>
       </div>
+
+      {activeBookings.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider px-1">Bookings</h3>
+          <div className="grid grid-cols-1 gap-3">
+            {activeBookings.map(booking => (
+              <NewBookingCard 
+                key={booking.id} 
+                booking={booking} 
+                user={user} 
+                onAction={onUpdateBookingStatus} 
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {rewardTasks.length > 0 && (
         <div className="space-y-3">
@@ -2498,7 +2816,17 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
   );
 }
 
-function DetailedProfileView({ item, setView, onWhatsAppClick }: { item: any, setView: (v: any, item?: any) => void, onWhatsAppClick: (item: any) => void }) {
+function DetailedProfileView({ 
+  item, 
+  setView, 
+  onWhatsAppClick,
+  onBookClick
+}: { 
+  item: any, 
+  setView: (v: any, item?: any) => void, 
+  onWhatsAppClick: (item: any) => void,
+  onBookClick?: (item: any) => void
+}) {
   if (!item) return null;
   const isUserProfile = !!item.uid;
   const name = isUserProfile ? item.displayName : (item.driverName || item.passengerName);
@@ -2571,6 +2899,14 @@ function DetailedProfileView({ item, setView, onWhatsAppClick }: { item: any, se
           }}>
             <MessageCircle className="w-5 h-5" /> WhatsApp Karein
           </Button>
+          {!isUserProfile && (
+            <Button 
+              className="w-full gap-2 py-8 text-xl bg-slate-900 hover:bg-black text-white font-black shadow-xl shadow-slate-200 rounded-2xl transition-all active:scale-95" 
+              onClick={() => onBookClick && onBookClick(item)}
+            >
+              {item.driverId ? 'Book Your Seat' : 'Book Passenger'}
+            </Button>
+          )}
           {!isUserProfile && (
             <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-blue-200 text-blue-700" onClick={() => {
               trackInteraction(item.id, 'chat', item.driverId ? 'rides' : 'rideRequests');
@@ -3229,6 +3565,7 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
   const [warnings, setWarnings] = useState<Warning[]>([]);
   const [drivers, setDrivers] = useState<UserProfile[]>([]);
   const [passengers, setPassengers] = useState<UserProfile[]>([]);
+  const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedUserForWarning, setSelectedUserForWarning] = useState<UserProfile | null>(null);
   const [selectedComplaintForReply, setSelectedComplaintForReply] = useState<Complaint | null>(null);
@@ -3270,6 +3607,12 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'warnings');
     });
+
+    const unsubAllBookings = onSnapshot(collection(db, 'bookings'), (snap) => {
+      setAllBookings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'bookings');
+    });
     
     const today = format(new Date(), 'yyyy-MM-dd');
     const unsubVisits = onSnapshot(doc(db, 'analytics', today), (docSnap) => {
@@ -3288,6 +3631,7 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
       unsubComplaintsCount();
       unsubVisits();
       unsubWarnings();
+      unsubAllBookings();
     };
   }, []);
 
@@ -3341,11 +3685,12 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="drivers">Owners</TabsTrigger>
           <TabsTrigger value="passengers">Pass.</TabsTrigger>
           <TabsTrigger value="rides">Rides</TabsTrigger>
+          <TabsTrigger value="bookings">Bookings</TabsTrigger>
           <TabsTrigger value="complaints">Compl.</TabsTrigger>
           <TabsTrigger value="warnings">Warn.</TabsTrigger>
           <TabsTrigger value="demo">Demo</TabsTrigger>
@@ -3394,6 +3739,42 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
               <AdminRideCard key={req.id} item={req} type="request" />
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="bookings" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>All Bookings</CardTitle>
+              <CardDescription>Monitor all ride bookings</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[400px]">
+                <div className="space-y-3">
+                  {allBookings.length === 0 ? (
+                    <EmptyState message="Abhi tak koi booking nahi hui." />
+                  ) : (
+                    allBookings.map(booking => (
+                      <div key={booking.id} className="p-4 border rounded-xl flex justify-between items-center bg-white shadow-sm">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Badge className={booking.type === 'ride_booking' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}>
+                              {booking.type === 'ride_booking' ? 'Ride' : 'Request'}
+                            </Badge>
+                            <p className="font-bold text-slate-900">{booking.passengerName} ↔ {booking.driverName}</p>
+                          </div>
+                          <p className="text-xs text-slate-500">{booking.origin} to {booking.destination}</p>
+                          <p className="text-xs text-slate-500 font-medium">{booking.seats} Seats • {booking.date} • {booking.time}</p>
+                        </div>
+                        <Badge className={booking.status === 'confirmed' ? 'bg-emerald-500' : booking.status === 'cancelled' ? 'bg-rose-500' : 'bg-yellow-500'}>
+                          {booking.status}
+                        </Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="complaints" className="mt-4">

@@ -27,6 +27,8 @@ export interface Ride {
   driverId: string;
   driverName: string;
   driverPhoto?: string;
+  phoneNumber?: string;
+  whatsappNumber?: string;
   origin: string;
   destination: string;
   date: string;
@@ -62,6 +64,8 @@ export interface RideRequest {
   passengerId: string;
   passengerName: string;
   passengerPhoto?: string;
+  phoneNumber?: string;
+  whatsappNumber?: string;
   origin: string;
   destination: string;
   date: string;
@@ -124,5 +128,25 @@ export interface Warning {
   adminMessage: string;
   userReply?: string;
   status: 'pending' | 'replied';
+  createdAt: any;
+}
+
+export interface Booking {
+  id: string;
+  rideId: string;
+  driverId: string;
+  passengerId: string;
+  passengerName: string;
+  driverName: string;
+  seats: number;
+  status: 'pending' | 'confirmed' | 'cancelled';
+  type: 'ride_booking' | 'request_booking';
+  participants: string[];
+  origin: string;
+  destination: string;
+  date: string;
+  time: string;
+  passengerWhatsapp?: string;
+  driverWhatsapp?: string;
   createdAt: any;
 }

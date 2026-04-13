@@ -58,6 +58,19 @@ service cloud.firestore {
     //   - rideId: string (optional)
     //   - timestamp: timestamp (required)
     //
+    // Collection: bookings
+    // Document ID: {bookingId}
+    // Fields:
+    //   - rideId: string (required)
+    //   - driverId: string (required)
+    //   - passengerId: string (required)
+    //   - passengerName: string (required)
+    //   - driverName: string (required)
+    //   - seats: number (required)
+    //   - status: string (required, enum: ['pending', 'confirmed', 'cancelled'])
+    //   - type: string (required, enum: ['ride_booking', 'request_booking'])
+    //   - createdAt: timestamp (required)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -156,6 +169,14 @@ service cloud.firestore {
              data.status in ['pending', 'replied'];
     }
 
+    function isValidBooking(data) {
+      return hasRequiredFields(['rideId', 'driverId', 'passengerId', 'seats', 'status', 'type', 'createdAt']) &&
+             (data.passengerId == request.auth.uid || data.driverId == request.auth.uid) &&
+             data.seats is number && data.seats > 0 &&
+             data.status in ['pending', 'confirmed', 'cancelled'] &&
+             data.type in ['ride_booking', 'request_booking'];
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -221,6 +242,16 @@ service cloud.firestore {
     match /rewardHistory/{rewardId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && isValidRewardHistory(request.resource.data);
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() && (resource.data.passengerId == request.auth.uid || resource.data.driverId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidBooking(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (resource.data.passengerId == request.auth.uid || resource.data.driverId == request.auth.uid) && 
+        isValidBooking(request.resource.data)
+      ) || isAdmin();
+      allow delete: if isAdmin();
     }
   }
 }
