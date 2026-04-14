@@ -93,6 +93,7 @@ export default function App() {
   const [pendingStatusReport, setPendingStatusReport] = useState<any>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [allRides, setAllRides] = useState<Ride[]>([]);
+  const appLoadTime = useRef(Date.now());
 
   // Notification Helper
   const showNotification = (title: string, options?: NotificationOptions & { body?: string, tag?: string }) => {
@@ -672,20 +673,22 @@ export default function App() {
       collection(db, 'rideRequests'),
       where('status', '==', 'pending'),
       orderBy('createdAt', 'desc'),
-      limit(5)
+      limit(10)
     );
     
-    let initialRequestsLoad = true;
     const unsubNewRequests = onSnapshot(qNewRequests, (snapshot) => {
-      if (initialRequestsLoad) {
-        initialRequestsLoad = false;
-        return;
-      }
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added' && profile.role === 'driver') {
           const req = change.doc.data() as RideRequest;
-          // Only notify if it's not the user's own request
-          if (req.passengerId !== user.uid) {
+          // Only notify if it's not the user's own request AND it's new (after app load)
+          const isNew = !req.createdAt || (req.createdAt.toMillis && req.createdAt.toMillis() > appLoadTime.current - 10000);
+          
+          if (req.passengerId !== user.uid && isNew) {
+            // Filter out Karachi if it's bothering the user
+            if (req.origin?.toLowerCase().includes('karachi') || req.destination?.toLowerCase().includes('karachi')) {
+              return;
+            }
+
             showNotification('New Ride Request', {
               body: `${req.passengerName} needs a ride to ${req.destination}`,
               tag: `new-request-${change.doc.id}`
@@ -703,12 +706,7 @@ export default function App() {
       where('passengerId', '==', user.uid)
     );
     
-    let initialMyRequestsLoad = true;
     const unsubMyRequests = onSnapshot(qMyRequests, (snapshot) => {
-      if (initialMyRequestsLoad) {
-        initialMyRequestsLoad = false;
-        return;
-      }
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'modified') {
           const req = change.doc.data() as RideRequest;
@@ -729,22 +727,21 @@ export default function App() {
       collection(db, 'messages'),
       where('receiverId', '==', user.uid),
       orderBy('timestamp', 'desc'),
-      limit(1)
+      limit(5)
     );
     
-    let initialMessagesLoad = true;
     const unsubMessages = onSnapshot(qMessages, (snapshot) => {
-      if (initialMessagesLoad) {
-        initialMessagesLoad = false;
-        return;
-      }
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const msg = change.doc.data() as ChatMessage;
-          showNotification('New Message', {
-            body: msg.text,
-            tag: `msg-${change.doc.id}`
-          });
+          const isNew = !msg.timestamp || (msg.timestamp.toMillis && msg.timestamp.toMillis() > appLoadTime.current - 10000);
+          
+          if (isNew) {
+            showNotification('New Message', {
+              body: msg.text,
+              tag: `msg-${change.doc.id}`
+            });
+          }
         }
       });
     }, (error) => {
@@ -756,19 +753,21 @@ export default function App() {
       collection(db, 'rides'),
       where('status', '==', 'available'),
       orderBy('createdAt', 'desc'),
-      limit(5)
+      limit(10)
     );
     
-    let initialRidesLoad = true;
     const unsubNewRides = onSnapshot(qNewRides, (snapshot) => {
-      if (initialRidesLoad) {
-        initialRidesLoad = false;
-        return;
-      }
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added' && profile.role === 'passenger') {
           const ride = change.doc.data() as Ride;
-          if (ride.driverId !== user.uid) {
+          const isNew = !ride.createdAt || (ride.createdAt.toMillis && ride.createdAt.toMillis() > appLoadTime.current - 10000);
+          
+          if (ride.driverId !== user.uid && isNew) {
+            // Filter out Karachi
+            if (ride.origin?.toLowerCase().includes('karachi') || ride.destination?.toLowerCase().includes('karachi')) {
+              return;
+            }
+
             showNotification('New Ride Available', {
               body: `${ride.driverName} is going to ${ride.destination}`,
               tag: `new-ride-${change.doc.id}`
@@ -889,8 +888,11 @@ export default function App() {
     trackVisit();
   }, []);
 
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
+
   const handleCreateBooking = async (ride: Ride | RideRequest, seats: number) => {
-    if (!user || !profile) return;
+    if (!user || !profile || isSubmittingBooking) return;
+    setIsSubmittingBooking(true);
     try {
       const isRideOffer = 'availableSeats' in ride;
       const bookingData: any = {
@@ -917,6 +919,8 @@ export default function App() {
       toast.success("Booking request bhej di gayi hai!");
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'bookings');
+    } finally {
+      setIsSubmittingBooking(false);
     }
   };
 
@@ -1032,7 +1036,7 @@ export default function App() {
       case 'edit_post':
         return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} editItem={selectedItem} />;
       case 'search':
-        return <RouteSearch setView={setView} userRole={(profile?.role as 'driver' | 'passenger') || 'passenger'} onWhatsAppClick={setWaModalData} />;
+        return <RouteSearch setView={setView} userRole={(profile?.role as 'driver' | 'passenger') || 'passenger'} onWhatsAppClick={setWaModalData} onBookClick={setBookingTask} />;
       case 'profile_view':
         return <DetailedProfileView 
           item={selectedItem} 
@@ -1116,7 +1120,8 @@ export default function App() {
           ride={bookingTask} 
           user={user} 
           onClose={() => setBookingTask(null)} 
-          onConfirm={(seats) => handleCreateBooking(bookingTask, seats)} 
+          onConfirm={(seats) => handleCreateBooking(bookingTask, seats)}
+          isSubmitting={isSubmittingBooking}
         />
       )}
 
@@ -1320,12 +1325,14 @@ function BookingModal({
   ride, 
   user, 
   onClose, 
-  onConfirm 
+  onConfirm,
+  isSubmitting
 }: { 
   ride: Ride | RideRequest, 
   user: User | null, 
   onClose: () => void, 
-  onConfirm: (seats: number) => void 
+  onConfirm: (seats: number) => void,
+  isSubmitting?: boolean
 }) {
   const [seats, setSeats] = useState(1);
   const isRideOffer = 'availableSeats' in ride;
@@ -1366,6 +1373,7 @@ function BookingModal({
                 variant="outline" 
                 className="h-12 w-12 rounded-xl border-slate-200"
                 onClick={() => setSeats(Math.max(1, seats - 1))}
+                disabled={isSubmitting}
               >
                 -
               </Button>
@@ -1376,6 +1384,7 @@ function BookingModal({
                 variant="outline" 
                 className="h-12 w-12 rounded-xl border-slate-200"
                 onClick={() => setSeats(Math.min(maxSeats, seats + 1))}
+                disabled={isSubmitting}
               >
                 +
               </Button>
@@ -1387,10 +1396,11 @@ function BookingModal({
           <Button 
             className="h-16 rounded-2xl bg-blue-600 hover:bg-blue-700 text-xl font-black shadow-lg shadow-blue-200 transition-all active:scale-95"
             onClick={() => onConfirm(seats)}
+            disabled={isSubmitting}
           >
-            Confirm Booking
+            {isSubmitting ? 'Bhej rahe hain...' : 'Confirm Booking'}
           </Button>
-          <Button variant="ghost" className="text-slate-400 font-bold hover:text-slate-600" onClick={onClose}>
+          <Button variant="ghost" className="text-slate-400 font-bold hover:text-slate-600" onClick={onClose} disabled={isSubmitting}>
             Wapas
           </Button>
         </div>
@@ -1563,41 +1573,48 @@ function NewBookingCard({
   const otherUserWhatsapp = isDriver ? booking.passengerWhatsapp : booking.driverWhatsapp;
 
   return (
-    <Card className="border-none shadow-lg overflow-hidden bg-white border-l-4 border-emerald-500">
-      <CardContent className="p-5">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-emerald-50 p-2 rounded-xl">
-                <Badge className="bg-emerald-600 text-white font-bold">New Booking</Badge>
+    <Card className="border-none shadow-xl overflow-hidden bg-white rounded-3xl border-t-8 border-emerald-500">
+      <CardContent className="p-6">
+        <div className="flex flex-col gap-5">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-4">
+              <div className="bg-emerald-100 p-3 rounded-2xl">
+                <Users className="w-6 h-6 text-emerald-600" />
               </div>
               <div>
-                <p className="text-sm font-black text-slate-900">{otherUserName}</p>
-                <p className="text-[10px] text-slate-500">{booking.origin} to {booking.destination}</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge className="bg-emerald-500/10 text-emerald-600 border-none hover:bg-emerald-500/20 px-2 py-0 h-5 text-[10px] font-bold uppercase tracking-wider">New Booking</Badge>
+                </div>
+                <p className="text-lg font-black text-slate-900 leading-tight">{otherUserName}</p>
+                <p className="text-xs font-medium text-slate-500 flex items-center gap-1 mt-1">
+                  <Navigation className="w-3 h-3" />
+                  {booking.origin} to {booking.destination}
+                </p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-xs font-bold text-slate-900">{booking.seats} Seats</p>
-              <p className="text-[10px] text-slate-500">{booking.date} • {booking.time}</p>
+            <div className="text-right space-y-1">
+              <div className="inline-flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg">
+                <Users className="w-3 h-3 text-slate-600" />
+                <span className="text-xs font-black text-slate-900">{booking.seats} Seats</span>
+              </div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{booking.date} • {booking.time}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {otherUserWhatsapp && (
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="flex-1 h-10 rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 gap-2"
-                onClick={() => window.open(`https://wa.me/${otherUserWhatsapp}`, '_blank')}
-              >
-                <MessageCircle className="w-4 h-4" />
-                WhatsApp
-              </Button>
-            )}
+          <div className="grid grid-cols-2 gap-3">
             <Button 
               size="sm" 
               variant="outline" 
-              className="flex-1 h-10 rounded-xl border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 gap-2"
+              className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-200 gap-2 font-bold transition-all active:scale-95"
+              onClick={() => window.open(`https://wa.me/${otherUserWhatsapp}`, '_blank')}
+            >
+              <MessageCircle className="w-4 h-4" />
+              WhatsApp
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="h-12 rounded-2xl border-blue-100 bg-blue-50/50 text-blue-700 hover:bg-blue-100 hover:border-blue-200 gap-2 font-bold transition-all active:scale-95"
               onClick={() => {/* In-app chat logic */}}
             >
               <MessageSquare className="w-4 h-4" />
@@ -1606,16 +1623,16 @@ function NewBookingCard({
           </div>
 
           {booking.status === 'pending' && isDriver && (
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex items-center gap-3 pt-2">
               <Button 
-                className="flex-1 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md"
+                className="flex-1 h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-200 transition-all active:scale-95"
                 onClick={() => onAction(booking.id, 'confirmed')}
               >
                 Confirm
               </Button>
               <Button 
                 variant="ghost" 
-                className="flex-1 h-12 rounded-xl text-slate-400 font-bold hover:text-rose-600"
+                className="flex-1 h-14 rounded-2xl text-slate-400 font-bold hover:text-rose-600 hover:bg-rose-50 transition-all"
                 onClick={() => onAction(booking.id, 'cancelled')}
               >
                 Cancel
@@ -1624,9 +1641,9 @@ function NewBookingCard({
           )}
 
           {booking.status === 'confirmed' && (
-            <div className="bg-emerald-50 p-3 rounded-xl text-center">
-              <p className="text-emerald-700 font-bold text-sm flex items-center justify-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
+            <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-center">
+              <p className="text-emerald-700 font-black text-sm flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-5 h-5" />
                 Booking Confirmed!
               </p>
             </div>
@@ -2394,7 +2411,7 @@ function Dashboard({
   );
 }
 
-function RouteSearch({ setView, userRole, onWhatsAppClick }: { setView: (v: any, item?: any) => void, userRole: 'driver' | 'passenger', onWhatsAppClick: (item: any) => void }) {
+function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick }: { setView: (v: any, item?: any) => void, userRole: 'driver' | 'passenger', onWhatsAppClick: (item: any) => void, onBookClick: (item: any) => void }) {
   const [searchData, setSearchData] = useState({
     origin: '',
     destination: '',
@@ -2555,22 +2572,33 @@ function RouteSearch({ setView, userRole, onWhatsAppClick }: { setView: (v: any,
                       {item.price && <div className="font-bold text-blue-600">Rs. {item.price}</div>}
                     </div>
                   </CardHeader>
-                  <CardFooter className="p-2 bg-slate-50 flex gap-2">
-                    <Button variant="ghost" size="sm" className="flex-1 gap-1" onClick={(e) => { 
-                      e.stopPropagation(); 
-                      trackInteraction(item.id, 'call', userRole === 'driver' ? 'rideRequests' : 'rides');
-                      window.open(`tel:${item.whatsappNumber}`, '_self'); 
-                    }}><Phone className="w-3 h-3" /> Call</Button>
-                    <Button variant="ghost" size="sm" className="flex-1 gap-1 text-green-600" onClick={(e) => { 
-                      e.stopPropagation(); 
-                      trackInteraction(item.id, 'whatsapp', userRole === 'driver' ? 'rideRequests' : 'rides');
-                      onWhatsAppClick(item); 
-                    }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
-                    <Button variant="ghost" size="sm" className="flex-1 gap-1 text-blue-600" onClick={(e) => { 
-                      e.stopPropagation(); 
-                      trackInteraction(item.id, 'chat', userRole === 'driver' ? 'rideRequests' : 'rides');
-                      setView('chat', item); 
-                    }}><MessageSquare className="w-3 h-3" /> Chat</Button>
+                  <CardFooter className="p-3 bg-slate-50/50 flex flex-col gap-2">
+                    <Button 
+                      className="w-full bg-slate-900 hover:bg-black text-white font-black rounded-xl h-12 shadow-lg shadow-slate-200 transition-all active:scale-95" 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        onBookClick(item); 
+                      }}
+                    >
+                      {item.driverId ? 'Book Your Seat' : 'Book Passenger'}
+                    </Button>
+                    <div className="flex gap-2 w-full">
+                      <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-blue-600 border-blue-100 bg-blue-50/50 hover:bg-blue-100" onClick={(e) => { 
+                        e.stopPropagation(); 
+                        trackInteraction(item.id, 'chat', userRole === 'driver' ? 'rideRequests' : 'rides');
+                        setView('chat', item); 
+                      }}><MessageSquare className="w-3 h-3" /> Chat</Button>
+                      <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-green-600 border-green-100 bg-green-50/50 hover:bg-green-100" onClick={(e) => { 
+                        e.stopPropagation(); 
+                        trackInteraction(item.id, 'whatsapp', userRole === 'driver' ? 'rideRequests' : 'rides');
+                        onWhatsAppClick(item); 
+                      }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
+                      <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-slate-600 border-slate-200 bg-white hover:bg-slate-50" onClick={(e) => { 
+                        e.stopPropagation(); 
+                        trackInteraction(item.id, 'call', userRole === 'driver' ? 'rideRequests' : 'rides');
+                        window.open(`tel:${item.whatsappNumber}`, '_self'); 
+                      }}><Phone className="w-3 h-3" /> Call</Button>
+                    </div>
                   </CardFooter>
                 </Card>
                 {index === 1 && <AdSlot label="Search Result Ad" />}
@@ -2910,34 +2938,30 @@ function DetailedProfileView({
         )}
 
         <div className="grid grid-cols-1 gap-3">
-          <Button className="w-full gap-2 py-6 text-lg bg-blue-600" onClick={() => {
-            if (!isUserProfile) trackInteraction(item.id, 'call', item.driverId ? 'rides' : 'rideRequests');
-            window.open(`tel:${item.whatsappNumber}`, '_self');
-          }}>
-            <Phone className="w-5 h-5" /> Call Karein
+          <Button 
+            className="w-full gap-2 py-8 text-xl bg-slate-900 hover:bg-black text-white font-black shadow-xl shadow-slate-200 rounded-2xl transition-all active:scale-95" 
+            onClick={() => onBookClick && onBookClick(item)}
+          >
+            {item.driverId ? 'Book Your Seat' : 'Book Passenger'}
           </Button>
-          <Button className="w-full gap-2 py-6 text-lg bg-green-600 hover:bg-green-700" onClick={() => {
+          <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-blue-100 bg-blue-50/50 text-blue-700 rounded-2xl" onClick={() => {
+            trackInteraction(item.id, 'chat', item.driverId ? 'rides' : 'rideRequests');
+            setView('chat', item);
+          }}>
+            <MessageSquare className="w-5 h-5" /> In-App Chat
+          </Button>
+          <Button className="w-full gap-2 py-6 text-lg bg-green-600 hover:bg-green-700 rounded-2xl" onClick={() => {
             if (!isUserProfile) trackInteraction(item.id, 'whatsapp', item.driverId ? 'rides' : 'rideRequests');
             onWhatsAppClick(item);
           }}>
             <MessageCircle className="w-5 h-5" /> WhatsApp Karein
           </Button>
-          {!isUserProfile && (
-            <Button 
-              className="w-full gap-2 py-8 text-xl bg-slate-900 hover:bg-black text-white font-black shadow-xl shadow-slate-200 rounded-2xl transition-all active:scale-95" 
-              onClick={() => onBookClick && onBookClick(item)}
-            >
-              {item.driverId ? 'Book Your Seat' : 'Book Passenger'}
-            </Button>
-          )}
-          {!isUserProfile && (
-            <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-blue-200 text-blue-700" onClick={() => {
-              trackInteraction(item.id, 'chat', item.driverId ? 'rides' : 'rideRequests');
-              setView('chat');
-            }}>
-              <MessageSquare className="w-5 h-5" /> In-App Chat
-            </Button>
-          )}
+          <Button className="w-full gap-2 py-6 text-lg bg-blue-600 hover:bg-blue-700 rounded-2xl" onClick={() => {
+            if (!isUserProfile) trackInteraction(item.id, 'call', item.driverId ? 'rides' : 'rideRequests');
+            window.open(`tel:${item.whatsappNumber}`, '_self');
+          }}>
+            <Phone className="w-5 h-5" /> Call Karein
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -3592,6 +3616,7 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedUserForWarning, setSelectedUserForWarning] = useState<UserProfile | null>(null);
   const [selectedComplaintForReply, setSelectedComplaintForReply] = useState<Complaint | null>(null);
+  const [isCleaning, setIsCleaning] = useState(false);
 
   const [allRequests, setAllRequests] = useState<RideRequest[]>([]);
 
@@ -3658,6 +3683,39 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
     };
   }, []);
 
+  const handleCleanupKarachi = async () => {
+    if (!window.confirm("Kia aap waqai Karachi se mutaliq tamam posts delete karna chahte hain?")) return;
+    setIsCleaning(true);
+    try {
+      const collections = ['rides', 'rideRequests', 'bookings'];
+      
+      for (const collName of collections) {
+        const q = query(collection(db, collName));
+        const snapshot = await getCountFromServer(q);
+        if (snapshot.data().count > 0) {
+          const unsub = onSnapshot(q, (s) => {
+            s.docs.forEach(async (d) => {
+              const data = d.data();
+              if (
+                (data.origin && data.origin.toLowerCase().includes('karachi')) ||
+                (data.destination && data.destination.toLowerCase().includes('karachi'))
+              ) {
+                await deleteDoc(doc(db, collName, d.id));
+              }
+            });
+          });
+          setTimeout(() => unsub(), 3000);
+        }
+      }
+      toast.success(`Cleanup process shuru ho gaya hai. Karachi se mutaliq posts delete ho jayengi.`);
+    } catch (error) {
+      console.error("Cleanup error:", error);
+      toast.error("Cleanup mein masla aaya.");
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
   const issueWarning = (user: UserProfile) => {
     setSelectedUserForWarning(user);
   };
@@ -3718,7 +3776,28 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
           <TabsTrigger value="warnings">Warn.</TabsTrigger>
           <TabsTrigger value="demo">Demo</TabsTrigger>
         </TabsList>
-        <TabsContent value="overview" className="mt-4">
+        <TabsContent value="overview" className="mt-4 space-y-4">
+          <Card className="border-red-100 bg-red-50/30">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-red-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                System Cleanup
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between">
+              <p className="text-xs text-red-600">Karachi se mutaliq tamam posts aur bookings delete karein.</p>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={handleCleanupKarachi}
+                disabled={isCleaning}
+                className="h-8 text-xs font-bold"
+              >
+                {isCleaning ? 'Cleaning...' : 'Cleanup Karachi'}
+              </Button>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>App Performance</CardTitle>
