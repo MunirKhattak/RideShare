@@ -2223,6 +2223,12 @@ function Dashboard({
   const userRole = profile?.role || 'passenger';
   const [activeRidesList, setActiveRidesList] = useState<any[]>([]);
   const [activeRequestsList, setActiveRequestsList] = useState<any[]>([]);
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -2250,10 +2256,25 @@ function Dashboard({
 
   const activeRides = useMemo(() => [...activeRidesList, ...activeRequestsList], [activeRidesList, activeRequestsList]);
 
+  const filteredBookings = useMemo(() => {
+    return activeBookings.filter(b => {
+      if (b.status === 'cancelled') return false;
+      if (b.status === 'pending') return true;
+      
+      // For confirmed bookings, hide if ride time has passed (moves to Active Rides)
+      const rideTime = new Date(`${b.date}T${b.time || '00:00'}`).getTime();
+      return now.getTime() < rideTime;
+    });
+  }, [activeBookings, now]);
+
   const rewardTasks = useMemo(() => {
     if (!user) return [];
     const tasks: any[] = [];
     activeRides.forEach(ride => {
+      // Only show in Active Rides if scheduled time has arrived or passed
+      const rideTime = new Date(`${ride.date}T${ride.time || '00:00'}`).getTime();
+      if (now.getTime() < rideTime) return;
+
       const isDriver = user.uid === ride.driverId;
       if (isDriver) {
         // Driver sees all passengers in this ride
@@ -2281,7 +2302,7 @@ function Dashboard({
       }
     });
     return tasks;
-  }, [activeRides, user]);
+  }, [activeRides, user, now]);
 
   return (
     <div className="space-y-6 py-4">
@@ -2313,11 +2334,11 @@ function Dashboard({
         </div>
       </div>
 
-      {activeBookings.length > 0 && (
+      {filteredBookings.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider px-1">Bookings</h3>
           <div className="grid grid-cols-1 gap-3">
-            {activeBookings.map(booking => (
+            {filteredBookings.map(booking => (
               <NewBookingCard 
                 key={booking.id} 
                 booking={booking} 
@@ -2366,12 +2387,12 @@ function Dashboard({
                               passengerId,
                               type: 'start',
                               otherUser: { 
-                                name: isDriver ? status.name : ride.driverName,
+                                name: isDriver ? (status.name || 'User') : ride.driverName,
                                 id: (isDriver ? passengerId : ride.driverId).substring(0, 4)
                               }
                             })}
                           >
-                            Safar Shuru Karein
+                            Safar Shuru Ha?
                           </Button>
                         ) : !myConfirmed ? (
                           <Button 
