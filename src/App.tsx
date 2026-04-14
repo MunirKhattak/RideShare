@@ -451,16 +451,6 @@ export default function App() {
           const now = new Date();
           const diffMins = (now.getTime() - rideStartTime.getTime()) / (1000 * 60);
 
-          // 1. Start Confirmation (30 mins after start)
-          if (diffMins >= 30 && !status.startTimeConfirmed && user.uid === pId) {
-            setRewardTask(prev => prev?.ride?.id === ride.id && prev?.type === 'start' ? prev : {
-              ride,
-              passengerId: pId,
-              type: 'start',
-              otherUser: { name: ride.driverName, id: ride.driverId.substring(0, 4) }
-            });
-          }
-
           // 2. Mutual Confirmation
           const isDriver = user.uid === ride.driverId;
           if (status.driverConfirmed && !status.passengerConfirmed && user.uid === pId) {
@@ -1596,11 +1586,13 @@ function RewardModal({ task, onConfirm, onClose, user, onShowAd }: { task: any, 
 function NewBookingCard({ 
   booking, 
   user, 
-  onAction 
+  onAction,
+  onStartRide
 }: { 
   booking: Booking, 
   user: User | null, 
-  onAction: (id: string, status: 'confirmed' | 'cancelled') => void 
+  onAction: (id: string, status: 'confirmed' | 'cancelled') => void,
+  onStartRide?: () => void
 }) {
   const isDriver = user?.uid === booking.driverId;
   const otherUserName = isDriver ? booking.passengerName : booking.driverName;
@@ -1675,11 +1667,19 @@ function NewBookingCard({
           )}
 
           {booking.status === 'confirmed' && (
-            <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl text-center">
-              <p className="text-emerald-700 font-black text-sm flex items-center justify-center gap-2">
-                <CheckCircle2 className="w-5 h-5" />
-                Booking Confirmed!
-              </p>
+            <div className="flex flex-col gap-3 pt-2">
+              <Button 
+                className="w-full h-14 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg shadow-blue-200 transition-all active:scale-95"
+                onClick={onStartRide}
+              >
+                Safar Shuru Hua
+              </Button>
+              <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl text-center">
+                <p className="text-emerald-700 font-bold text-xs flex items-center justify-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Booking Confirmed!
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -2256,53 +2256,86 @@ function Dashboard({
 
   const activeRides = useMemo(() => [...activeRidesList, ...activeRequestsList], [activeRidesList, activeRequestsList]);
 
+  const parseRideDate = (dateStr: string, timeStr: string) => {
+    try {
+      if (!dateStr) return new Date(0);
+      // Handle yyyy-MM-dd format
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return new Date(dateStr); // Fallback to native
+      const [year, month, day] = parts.map(Number);
+      const [hours, minutes] = (timeStr || '00:00').split(':').map(Number);
+      return new Date(year, month - 1, day, hours, minutes);
+    } catch (e) {
+      return new Date(0);
+    }
+  };
+
   const filteredBookings = useMemo(() => {
     return activeBookings.filter(b => {
       if (b.status === 'cancelled') return false;
       if (b.status === 'pending') return true;
       
-      // For confirmed bookings, hide if ride time has passed (moves to Active Rides)
-      const rideTime = new Date(`${b.date}T${b.time || '00:00'}`).getTime();
-      return now.getTime() < rideTime;
+      // For confirmed bookings, check if started
+      const ride = activeRides.find(r => r.id === b.rideId);
+      const status = ride?.rewardStatus?.[b.passengerId];
+      
+      // If started, it moves to Active Rides
+      if (status?.startTimeConfirmed) return false;
+
+      // Also move automatically if time has passed
+      const rideTime = parseRideDate(b.date, b.time).getTime();
+      if (now.getTime() >= rideTime) return false;
+
+      // Keep in bookings if not started yet and time hasn't passed
+      return true;
     });
-  }, [activeBookings, now]);
+  }, [activeBookings, activeRides, now]);
 
   const rewardTasks = useMemo(() => {
     if (!user) return [];
     const tasks: any[] = [];
     activeRides.forEach(ride => {
-      // Only show in Active Rides if scheduled time has arrived or passed
-      const rideTime = new Date(`${ride.date}T${ride.time || '00:00'}`).getTime();
-      if (now.getTime() < rideTime) return;
+      // Don't show completed or cancelled rides in Active Rides
+      if (ride.status === 'completed' || ride.status === 'cancelled' || ride.isDeleted) return;
 
       const isDriver = user.uid === ride.driverId;
-      if (isDriver) {
-        // Driver sees all passengers in this ride
-        Object.entries(ride.rewardStatus || {}).forEach(([pId, status]: [string, any]) => {
-          if (!status.rewardIssued) {
+      Object.entries(ride.rewardStatus || {}).forEach(([pId, status]: [string, any]) => {
+        if (status.rewardIssued) return;
+
+        const rideTime = parseRideDate(ride.date, ride.time).getTime();
+        const isStarted = status.startTimeConfirmed;
+        const timePassed = now.getTime() >= rideTime;
+
+        if (isStarted || timePassed) {
+          const isPassenger = user.uid === pId;
+          if (isDriver || isPassenger) {
             tasks.push({
               ride,
               passengerId: pId,
               status,
-              isDriver: true
+              isDriver
             });
           }
-        });
-      } else {
-        // Passenger sees only their own status in this ride
-        const status = ride.rewardStatus?.[user.uid];
-        if (status && !status.rewardIssued) {
-          tasks.push({
-            ride,
-            passengerId: user.uid,
-            status,
-            isDriver: false
-          });
         }
-      }
+      });
     });
     return tasks;
   }, [activeRides, user, now]);
+
+  const handleStartRideFromBooking = (booking: Booking) => {
+    const ride = activeRides.find(r => r.id === booking.rideId);
+    if (!ride) return;
+
+    onCompleteRide({
+      ride,
+      passengerId: booking.passengerId,
+      type: 'start',
+      otherUser: { 
+        name: user?.uid === ride.driverId ? booking.passengerName : ride.driverName,
+        id: (user?.uid === ride.driverId ? booking.passengerId : ride.driverId).substring(0, 4)
+      }
+    });
+  };
 
   return (
     <div className="space-y-6 py-4">
@@ -2344,6 +2377,7 @@ function Dashboard({
                 booking={booking} 
                 user={user} 
                 onAction={onUpdateBookingStatus} 
+                onStartRide={() => handleStartRideFromBooking(booking)}
               />
             ))}
           </div>
@@ -2373,7 +2407,7 @@ function Dashboard({
                             {otherConfirmed && <span className="ml-2 text-[10px] text-emerald-600 font-normal">(Mukamal ✓)</span>}
                           </p>
                           <p className="text-[10px] text-slate-500">
-                            {isDriver ? `${ride.origin} to ${ride.destination}` : `${ride.date} • ${ride.time}`}
+                            {ride.origin} to {ride.destination}
                           </p>
                         </div>
                       </div>
@@ -2392,7 +2426,7 @@ function Dashboard({
                               }
                             })}
                           >
-                            Safar Shuru Ha?
+                            Safar Shuru Hua
                           </Button>
                         ) : !myConfirmed ? (
                           <Button 
