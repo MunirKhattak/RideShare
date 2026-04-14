@@ -95,14 +95,19 @@ export default function App() {
   const [allRides, setAllRides] = useState<Ride[]>([]);
 
   // Notification Helper
-  const showNotification = (title: string, options?: NotificationOptions) => {
+  const showNotification = (title: string, options?: NotificationOptions & { body?: string, tag?: string }) => {
     if (!('Notification' in window)) {
       toast.error("Aap ka browser notifications support nahi karta.");
       return;
     }
 
+    const body = options?.body || '';
+    const tag = options?.tag || title;
+
     if (Notification.permission === 'granted') {
       const defaultOptions: any = {
+        body,
+        tag,
         icon: '/icon.svg',
         badge: '/icon.svg',
         vibrate: [200, 100, 200],
@@ -115,32 +120,33 @@ export default function App() {
           registration.showNotification(title, defaultOptions);
         }).catch(err => {
           console.error("SW Notification error:", err);
-          const n = new Notification(title, defaultOptions);
-          n.onclick = () => {
-            window.focus();
-            if (defaultOptions.data?.url) window.location.href = defaultOptions.data.url;
-            n.close();
-          };
+          try {
+            new Notification(title, defaultOptions);
+          } catch (e) {
+            console.error("Fallback notification error:", e);
+          }
         });
       } else {
-        const n = new Notification(title, defaultOptions);
-        n.onclick = () => {
-          window.focus();
-          if (defaultOptions.data?.url) window.location.href = defaultOptions.data.url;
-          n.close();
-        };
+        try {
+          new Notification(title, defaultOptions);
+        } catch (e) {
+          console.error("Fallback notification error:", e);
+        }
       }
     } else if (Notification.permission === 'denied') {
-      toast.error("Notification permission denied! Baraye meherbani browser settings mein is site ke liye notifications allow karein.");
+      // Don't spam toast if denied, just log
+      console.warn("Notification permission denied.");
     } else {
-      toast.warning("Notification permission abhi tak nahi mili. Requesting...");
       Notification.requestPermission().then(permission => {
         setNotificationPermission(permission);
         if (permission === 'granted') {
-          toast.success("Permission mil gayi! Ab aap notifications receive kar sakte hain.");
+          toast.success("Notifications enabled!");
         }
       });
     }
+
+    // Always show in-app toast as well for immediate feedback
+    toast.info(title, { description: body });
   };
 
   useEffect(() => {
@@ -164,6 +170,7 @@ export default function App() {
   }, [user]);
 
   const prevRidesRef = useRef<Record<string, any>>({});
+  const lastNotificationRef = useRef<Record<string, number>>({});
 
   // Monitor Rides for Notifications
   useEffect(() => {
@@ -248,23 +255,32 @@ export default function App() {
         const diffHours = diffMins / 60;
 
         const myStatus = ride.rewardStatus?.[user.uid];
+        const rideKey = `${doc.id}-${user.uid}`;
 
         // 30 Minute AFTER Start Reminder
         if (diffMins > 29 && diffMins < 40 && !myStatus?.startTimeConfirmed) {
-          showNotification("Kia ap ne Safar shuru kr lya?", {
-            body: `Aap ka safar (${ride.origin} se ${ride.destination}) shuru karne ka waqt ho chuka hai.`,
-            tag: `reminder-start-30m-${doc.id}`,
-            data: { url: `${window.location.origin}/?view=dashboard&action=start_ride&rideId=${doc.id}` }
-          });
+          const lastTime = lastNotificationRef.current[`${rideKey}-start`];
+          if (!lastTime || (now - lastTime > 15 * 60 * 1000)) { // 15 mins throttle
+            showNotification("Kia ap ne Safar shuru kr lya?", {
+              body: `Aap ka safar (${ride.origin} se ${ride.destination}) shuru karne ka waqt ho chuka hai.`,
+              tag: `reminder-start-30m-${doc.id}`,
+              data: { url: `${window.location.origin}/?view=dashboard&action=start_ride&rideId=${doc.id}` }
+            });
+            lastNotificationRef.current[`${rideKey}-start`] = now;
+          }
         }
 
         // 5 Hour AFTER Start Reminder
         if (diffHours > 4.9 && diffHours < 5.5 && (!myStatus?.driverConfirmed && !myStatus?.passengerConfirmed)) {
-          showNotification("Kia apka safar mukamal hua?", {
-            body: `Aap ka safar (${ride.origin} se ${ride.destination}) shuru hue 5 ghantay ho gaye hain.`,
-            tag: `reminder-complete-5h-${doc.id}`,
-            data: { url: `${window.location.origin}/?view=dashboard&action=complete_ride&rideId=${doc.id}` }
-          });
+          const lastTime = lastNotificationRef.current[`${rideKey}-complete`];
+          if (!lastTime || (now - lastTime > 15 * 60 * 1000)) { // 15 mins throttle
+            showNotification("Kia apka safar mukamal hua?", {
+              body: `Aap ka safar (${ride.origin} se ${ride.destination}) shuru hue 5 ghantay ho gaye hain.`,
+              tag: `reminder-complete-5h-${doc.id}`,
+              data: { url: `${window.location.origin}/?view=dashboard&action=complete_ride&rideId=${doc.id}` }
+            });
+            lastNotificationRef.current[`${rideKey}-complete`] = now;
+          }
         }
       });
     }, (error) => {
@@ -651,23 +667,6 @@ export default function App() {
       Notification.requestPermission();
     }
 
-    const sendNotification = (title: string, body: string) => {
-      // Browser Notification
-      if ('Notification' in window && Notification.permission === 'granted') {
-        try {
-          new Notification(title, { 
-            body, 
-            icon: '/favicon.ico',
-            tag: title // Prevent duplicate notifications for same event
-          });
-        } catch (e) {
-          console.error('Notification error:', e);
-        }
-      }
-      // In-app Toast
-      toast.info(title, { description: body });
-    };
-
     // 1. Listen for new ride requests (for drivers)
     const qNewRequests = query(
       collection(db, 'rideRequests'),
@@ -687,7 +686,10 @@ export default function App() {
           const req = change.doc.data() as RideRequest;
           // Only notify if it's not the user's own request
           if (req.passengerId !== user.uid) {
-            sendNotification('New Ride Request', `${req.passengerName} needs a ride to ${req.destination}`);
+            showNotification('New Ride Request', {
+              body: `${req.passengerName} needs a ride to ${req.destination}`,
+              tag: `new-request-${change.doc.id}`
+            });
           }
         }
       });
@@ -711,7 +713,10 @@ export default function App() {
         if (change.type === 'modified') {
           const req = change.doc.data() as RideRequest;
           if (req.status === 'matched') {
-            sendNotification('Ride Confirmed!', `Your request to ${req.destination} has been matched.`);
+            showNotification('Ride Confirmed!', {
+              body: `Your request to ${req.destination} has been matched.`,
+              tag: `request-matched-${change.doc.id}`
+            });
           }
         }
       });
@@ -736,7 +741,10 @@ export default function App() {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const msg = change.doc.data() as ChatMessage;
-          sendNotification('New Message', msg.text);
+          showNotification('New Message', {
+            body: msg.text,
+            tag: `msg-${change.doc.id}`
+          });
         }
       });
     }, (error) => {
@@ -761,7 +769,10 @@ export default function App() {
         if (change.type === 'added' && profile.role === 'passenger') {
           const ride = change.doc.data() as Ride;
           if (ride.driverId !== user.uid) {
-            sendNotification('New Ride Available', `${ride.driverName} is going to ${ride.destination}`);
+            showNotification('New Ride Available', {
+              body: `${ride.driverName} is going to ${ride.destination}`,
+              tag: `new-ride-${change.doc.id}`
+            });
           }
         }
       });
@@ -780,7 +791,10 @@ export default function App() {
         if (initComplaints) { initComplaints = false; return; }
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
-            sendNotification('New Complaint', 'A new complaint has been submitted.');
+            showNotification('New Complaint', {
+              body: 'A new complaint has been submitted.',
+              tag: `complaint-${change.doc.id}`
+            });
           }
         });
       });
@@ -791,7 +805,10 @@ export default function App() {
         if (initWarnings) { initWarnings = false; return; }
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'modified') {
-            sendNotification('Warning Reply', 'A user has replied to a warning.');
+            showNotification('Warning Reply', {
+              body: 'A user has replied to a warning.',
+              tag: `warning-reply-${change.doc.id}`
+            });
           }
         });
       });
@@ -813,12 +830,18 @@ export default function App() {
         if (change.type === 'added') {
           const booking = change.doc.data() as Booking;
           if (booking.driverId === user.uid) {
-            sendNotification('New Booking!', `${booking.passengerName} ne aap ki seat book ki hai.`);
+            showNotification('New Booking!', {
+              body: `${booking.passengerName} ne aap ki seat book ki hai.`,
+              tag: `new-booking-${change.doc.id}`
+            });
           }
         } else if (change.type === 'modified') {
           const booking = change.doc.data() as Booking;
           if (booking.status === 'confirmed' && booking.passengerId === user.uid) {
-            sendNotification('Booking Confirmed!', `${booking.driverName} ne aap ki booking confirm kar di hai.`);
+            showNotification('Booking Confirmed!', {
+              body: `${booking.driverName} ne aap ki booking confirm kar di hai.`,
+              tag: `booking-confirmed-${change.doc.id}`
+            });
           }
         }
       });
@@ -893,8 +916,7 @@ export default function App() {
       setBookingTask(null);
       toast.success("Booking request bhej di gayi hai!");
     } catch (error) {
-      console.error("Error creating booking:", error);
-      toast.error("Booking nahi ho saki.");
+      handleFirestoreError(error, OperationType.CREATE, 'bookings');
     }
   };
 
@@ -926,8 +948,7 @@ export default function App() {
         toast.info("Booking cancel kar di gayi.");
       }
     } catch (error) {
-      console.error("Error updating booking status:", error);
-      toast.error("Status update nahi ho saka.");
+      handleFirestoreError(error, OperationType.UPDATE, `bookings/${bookingId}`);
     }
   };
 
@@ -2710,6 +2731,7 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
         price: parseInt(formData.price),
         status: editItem ? editItem.status : 'available',
         finalStatus: editItem ? editItem.finalStatus : 'pending',
+        participants: editItem?.participants || [user.uid],
         ...(editItem ? {} : { createdAt: serverTimestamp() })
       } : {
         passengerId: user.uid,
@@ -2724,6 +2746,7 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
         time: formData.time,
         status: editItem ? editItem.status : 'pending',
         finalStatus: editItem ? editItem.finalStatus : 'pending',
+        participants: editItem?.participants || [user.uid],
         ...(editItem ? {} : { createdAt: serverTimestamp() })
       };
 
@@ -3971,12 +3994,12 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
                         const testRide = {
                           driverId: user.uid,
                           driverName: user.displayName || 'Demo Driver',
-                          origin: 'Lahore',
-                          destination: 'Karachi',
+                          origin: 'Demo City A',
+                          destination: 'Demo City B',
                           date: format(new Date(), 'yyyy-MM-dd'),
                           time: '12:00 PM',
-                          pickupPoint: 'Model Town',
-                          dropoffPoint: 'Clifton',
+                          pickupPoint: 'Point A',
+                          dropoffPoint: 'Point B',
                           availableSeats: 4,
                           price: 2500,
                           status: 'available',

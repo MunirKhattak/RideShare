@@ -109,7 +109,7 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
-      return hasRequiredFields(['uid', 'customId', 'displayName', 'email', 'role', 'createdAt']) &&
+      return hasRequiredFields(['uid', 'displayName', 'email', 'role', 'createdAt']) &&
              hasOnlyAllowedFields(['uid', 'customId', 'displayName', 'email', 'photoURL', 'phoneNumber', 'whatsappNumber', 'role', 'bio', 'easyCoins', 'createdAt']) &&
              data.uid == request.auth.uid &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
@@ -120,19 +120,21 @@ service cloud.firestore {
     }
 
     function isValidRide(data) {
-      return hasRequiredFields(['driverId', 'driverName', 'origin', 'destination', 'date', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'createdAt']) &&
+      return hasRequiredFields(['driverId', 'driverName', 'origin', 'destination', 'date', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'participants', 'createdAt']) &&
              hasOnlyAllowedFields(['driverId', 'driverName', 'driverPhoto', 'phoneNumber', 'whatsappNumber', 'origin', 'destination', 'date', 'day', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'participants', 'finalStatus', 'interactions', 'rewardStatus', 'statusReportedAt', 'createdAt']) &&
              data.driverId == request.auth.uid &&
-             data.availableSeats is number && data.availableSeats >= 0 &&
+             data.participants is list && request.auth.uid in data.participants &&
+             data.availableSeats is number &&
              data.price is number && data.price >= 0 &&
              data.status in ['available', 'full', 'completed', 'cancelled'] &&
              (!('finalStatus' in data) || data.finalStatus in ['pending', 'done', 'cancelled', 'late']);
     }
 
     function isValidRideRequest(data) {
-      return hasRequiredFields(['passengerId', 'passengerName', 'origin', 'destination', 'date', 'time', 'status', 'createdAt']) &&
+      return hasRequiredFields(['passengerId', 'passengerName', 'origin', 'destination', 'date', 'time', 'status', 'participants', 'createdAt']) &&
              hasOnlyAllowedFields(['passengerId', 'passengerName', 'passengerPhoto', 'phoneNumber', 'whatsappNumber', 'origin', 'destination', 'date', 'day', 'time', 'status', 'participants', 'finalStatus', 'interactions', 'rewardStatus', 'statusReportedAt', 'createdAt']) &&
              data.passengerId == request.auth.uid &&
+             data.participants is list && request.auth.uid in data.participants &&
              data.status in ['pending', 'matched', 'cancelled'] &&
              (!('finalStatus' in data) || data.finalStatus in ['pending', 'done', 'cancelled', 'late']);
     }
@@ -170,11 +172,13 @@ service cloud.firestore {
     }
 
     function isValidBooking(data) {
-      return hasRequiredFields(['rideId', 'driverId', 'passengerId', 'seats', 'status', 'type', 'createdAt']) &&
-             (data.passengerId == request.auth.uid || data.driverId == request.auth.uid) &&
+      return hasRequiredFields(['rideId', 'driverId', 'passengerId', 'seats', 'status', 'type', 'participants', 'createdAt']) &&
+             hasOnlyAllowedFields(['rideId', 'driverId', 'driverName', 'passengerId', 'passengerName', 'seats', 'status', 'type', 'participants', 'origin', 'destination', 'date', 'time', 'passengerWhatsapp', 'driverWhatsapp', 'createdAt']) &&
+             (data.passengerId == request.auth.uid || data.driverId == request.auth.uid || isAdmin()) &&
              data.seats is number && data.seats > 0 &&
              data.status in ['pending', 'confirmed', 'cancelled'] &&
-             data.type in ['ride_booking', 'request_booking'];
+             data.type in ['ride_booking', 'request_booking'] &&
+             data.participants is list && data.participants.size() >= 2;
     }
 
     // ===============================================================
@@ -184,7 +188,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || isAdmin();
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || 
+                     isAdmin() ||
+                     (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['easyCoins']));
     }
 
     match /rides/{rideId} {
@@ -204,6 +210,7 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidRideRequest(request.resource.data);
       allow update: if isAuthenticated() && (
         (request.auth.uid == resource.data.passengerId && isValidRideRequest(request.resource.data)) || 
+        (request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'participants']) && (request.auth.uid in request.resource.data.participants || isAdmin())) ||
         (request.auth.uid in resource.data.participants && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rewardStatus'])) ||
         isAdmin() ||
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['interactions']))
@@ -214,6 +221,10 @@ service cloud.firestore {
     match /messages/{messageId} {
       allow read: if isAuthenticated() && (request.auth.uid in resource.data.participants || isAdmin());
       allow create: if isAuthenticated() && isValidMessage(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == resource.data.receiverId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])) ||
+        isAdmin()
+      );
     }
 
     match /chats/{chatId}/messages/{messageId} {
@@ -230,7 +241,9 @@ service cloud.firestore {
 
     match /analytics/{dateId} {
       allow read: if isAdmin();
-      allow create, update: if isAuthenticated(); // Anyone can increment visit count
+      allow create, update: if isAuthenticated() && (
+        !('visits' in request.resource.data) || request.resource.data.visits is number
+      );
     }
 
     match /warnings/{warningId} {
@@ -245,7 +258,7 @@ service cloud.firestore {
     }
 
     match /bookings/{bookingId} {
-      allow read: if isAuthenticated() && (resource.data.passengerId == request.auth.uid || resource.data.driverId == request.auth.uid || isAdmin());
+      allow read: if isAuthenticated() && (request.auth.uid in resource.data.participants || isAdmin());
       allow create: if isAuthenticated() && isValidBooking(request.resource.data);
       allow update: if isAuthenticated() && (
         (resource.data.passengerId == request.auth.uid || resource.data.driverId == request.auth.uid) && 
