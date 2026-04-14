@@ -186,7 +186,7 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
       allow create: if isOwner(userId) && isValidUser(request.resource.data);
       allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || 
                      isAdmin() ||
@@ -197,7 +197,7 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidRide(request.resource.data);
       allow update: if isAuthenticated() && (
-        (request.auth.uid == resource.data.driverId && isValidRide(request.resource.data)) || 
+        (request.auth.uid == resource.data.driverId && isValidRide(request.resource.data) && request.resource.data.availableSeats >= 0) || 
         (request.auth.uid in resource.data.participants && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rewardStatus'])) ||
         isAdmin() ||
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['interactions']))

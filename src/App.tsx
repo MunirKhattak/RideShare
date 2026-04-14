@@ -166,6 +166,8 @@ export default function App() {
     
     const unsub = onSnapshot(collection(db, 'rides'), (snap) => {
       setAllRides(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ride)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'rides');
     });
     return () => unsub();
   }, [user]);
@@ -233,6 +235,8 @@ export default function App() {
             prevRidesRef.current[doc.id] = { id: doc.id, ...doc.data() };
           });
         }
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, collectionName);
       });
     };
 
@@ -320,25 +324,17 @@ export default function App() {
       if (action && rideId) {
         if (user) {
           const fetchRide = async () => {
-            if (rideId === 'demo') {
-              setRewardTask({
-                ride: { id: 'demo', origin: 'Lahore', destination: 'Islamabad', date: '2024-05-20', time: '10:00' },
-                passengerId: 'demo',
-                type: action === 'start_ride' ? 'start' : 'complete',
-                otherUser: { name: 'Demo User', id: 'demo' }
-              });
-              window.history.replaceState({}, '', window.location.pathname);
-              return;
-            }
             try {
               const rideDoc = await getDoc(doc(db, 'rides', rideId));
               if (rideDoc.exists()) {
                 const rideData = { id: rideDoc.id, ...rideDoc.data() } as any;
                 const isDriver = user.uid === rideData.driverId;
                 const passengerId = isDriver 
-                  ? (rideData.participants?.find((id: string) => id !== user.uid) || 'demo') 
+                  ? (rideData.participants?.find((id: string) => id !== user.uid)) 
                   : user.uid;
                 
+                if (!passengerId) return;
+
                 setRewardTask({
                   ride: rideData,
                   passengerId,
@@ -986,13 +982,6 @@ export default function App() {
       return;
     }
 
-    if (task.ride.id === 'demo') {
-      if (task.type === 'start') setRewardTask({ ...task, type: 'start_success' });
-      else if (task.type === 'complete') setRewardTask({ ...task, type: 'success' });
-      else setRewardTask(null);
-      return;
-    }
-
     try {
       const rideRef = doc(db, task.ride.collection || 'rides', task.ride.id);
       const rewardKey = `rewardStatus.${task.passengerId}`;
@@ -1043,12 +1032,6 @@ export default function App() {
             user={user} 
             profile={profile} 
             setView={setView} 
-            onDemoStart={() => setRewardTask({ 
-              ride: { id: 'demo', driverId: 'demo', driverName: 'Ali Khan', date: '2026-04-12', time: '10:00' }, 
-              passengerId: 'demo', 
-              type: 'start', 
-              otherUser: { name: 'Ali Khan', id: '4829' } 
-            })} 
             onRewardAction={setRewardTask}
             onCompleteRide={setRewardTask}
             activeBookings={activeBookings}
@@ -2205,7 +2188,6 @@ function Dashboard({
   user, 
   profile, 
   setView, 
-  onDemoStart, 
   onRewardAction, 
   onCompleteRide,
   activeBookings,
@@ -2214,7 +2196,6 @@ function Dashboard({
   user: User | null, 
   profile: UserProfile | null, 
   setView: (v: any, item?: any) => void, 
-  onDemoStart: () => void, 
   onRewardAction: (task: any) => void, 
   onCompleteRide: (task: any) => void,
   activeBookings: Booking[],
@@ -2277,6 +2258,10 @@ function Dashboard({
       
       // For confirmed bookings, check if started
       const ride = activeRides.find(r => r.id === b.rideId);
+      
+      // If ride is deleted or cancelled, hide the booking
+      if (!ride || ride.isDeleted || ride.status === 'cancelled') return false;
+
       const status = ride?.rewardStatus?.[b.passengerId];
       
       // If started, it moves to Active Rides
@@ -2349,11 +2334,6 @@ function Dashboard({
           </div>
           
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" className="rounded-full border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 gap-2 h-9" onClick={onDemoStart}>
-              <PlayCircle className="w-4 h-4" />
-              <span className="font-bold">Demo</span>
-            </Button>
-
             <Button 
               variant="outline" 
               size="sm" 
@@ -2852,6 +2832,7 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
         driverPhoto: user.photoURL,
         phoneNumber: profile?.phoneNumber || '',
         whatsappNumber: profile?.whatsappNumber || '',
+        bio: profile?.bio || '',
         origin: formData.origin,
         destination: formData.destination,
         date: formData.date,
@@ -2871,6 +2852,7 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
         passengerPhoto: user.photoURL,
         phoneNumber: profile?.phoneNumber || '',
         whatsappNumber: profile?.whatsappNumber || '',
+        bio: profile?.bio || '',
         origin: formData.origin,
         destination: formData.destination,
         date: formData.date,
@@ -3878,7 +3860,6 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
           <TabsTrigger value="bookings">Bookings</TabsTrigger>
           <TabsTrigger value="complaints">Compl.</TabsTrigger>
           <TabsTrigger value="warnings">Warn.</TabsTrigger>
-          <TabsTrigger value="demo">Demo</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-4 space-y-4">
           <Card className="border-red-100 bg-red-50/30">
@@ -4077,156 +4058,6 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
               ))
             )}
           </div>
-        </TabsContent>
-        <TabsContent value="demo" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Notification & Flow Demo</CardTitle>
-              <CardDescription>Yahan se aap real system notifications aur unka flow test kar sakte hain.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {Notification.permission !== 'granted' && (
-                <div className="p-6 bg-rose-50 border-2 border-rose-100 rounded-2xl text-center space-y-4">
-                  <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
-                  <div className="space-y-1">
-                    <h4 className="font-bold text-rose-900">Notifications Blocked</h4>
-                    <p className="text-sm text-rose-700">Aap AI Studio ke andar app chala rahe hain. Iframe mein notifications block hoti hain.</p>
-                    <p className="text-xs font-bold text-rose-600 mt-2">Hal: Upar bane "Open in new tab" icon par click karein aur naye tab mein permission allow karein.</p>
-                  </div>
-                  <Button 
-                    className="bg-rose-600 hover:bg-rose-700"
-                    onClick={() => {
-                      Notification.requestPermission().then(permission => {
-                        if (permission === 'granted') toast.success("Notifications enabled!");
-                        else toast.error("Permission still denied. Please open in a new tab.");
-                      });
-                    }}
-                  >
-                    Enable Notifications Now
-                  </Button>
-                </div>
-              )}
-
-              <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl text-sm text-amber-800">
-                <p className="font-bold mb-1">Note:</p>
-                <p>Notification test karne ke liye zaroori hai ke aap ne browser mein notification permission allow ki ho. Button dabane ke baad app se bahar nikal jayen (Home screen par) taake aap notification panel mein message dekh saken.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-6 bg-white border rounded-2xl shadow-sm space-y-4">
-                  <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div className="space-y-1">
-                    <h4 className="font-bold">Safar Shuru Reminder</h4>
-                    <p className="text-xs text-slate-500">30 mins baad aane wali notification.</p>
-                  </div>
-                  <Button 
-                    className="w-full bg-blue-600 hover:bg-blue-700"
-                    onClick={() => {
-                      const testRideId = allRides[0]?.id || 'demo';
-                      showNotification("Kia ap ne Safar shuru kr lya?", {
-                        body: "Aap ka safar shuru karne ka waqt ho chuka hai. Click kar ke confirm karein.",
-                        tag: "test-start",
-                        data: { url: `${window.location.origin}/?view=dashboard&action=start_ride&rideId=${testRideId}` }
-                      });
-                      toast.info("Notification bhej di gayi hai. App se bahar jayen.");
-                    }}
-                  >
-                    Test Start
-                  </Button>
-                </div>
-
-                <div className="p-6 bg-white border rounded-2xl shadow-sm space-y-4">
-                  <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center">
-                    <MapPin className="w-6 h-6 text-orange-600" />
-                  </div>
-                  <div className="space-y-1">
-                    <h4 className="font-bold">Safar Mukamal Reminder</h4>
-                    <p className="text-xs text-slate-500">5 ghantay baad aane wali notification.</p>
-                  </div>
-                  <Button 
-                    className="w-full bg-orange-600 hover:bg-orange-700"
-                    onClick={() => {
-                      const testRideId = allRides[0]?.id || 'demo';
-                      showNotification("Kia apka safar mukamal hua?", {
-                        body: "Aap ka safar shuru hue 5 ghantay ho gaye hain. Click kar ke status batayein.",
-                        tag: "test-complete",
-                        data: { url: `${window.location.origin}/?view=dashboard&action=complete_ride&rideId=${testRideId}` }
-                      });
-                      toast.info("Notification bhej di gayi hai. App se bahar jayen.");
-                    }}
-                  >
-                    Test Complete
-                  </Button>
-                </div>
-
-                <div className="p-6 bg-white border rounded-2xl shadow-sm space-y-4">
-                  <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center">
-                    <LayoutDashboard className="w-6 h-6 text-emerald-600" />
-                  </div>
-                  <div className="space-y-1">
-                    <h4 className="font-bold">Dashboard Manual Flow</h4>
-                    <p className="text-xs text-slate-500">Bina notification ke manual status update.</p>
-                  </div>
-                  <Button 
-                    className="w-full bg-emerald-600 hover:bg-emerald-700"
-                    onClick={async () => {
-                      if (!user) return;
-                      try {
-                        const testRide = {
-                          driverId: user.uid,
-                          driverName: user.displayName || 'Demo Driver',
-                          origin: 'Demo City A',
-                          destination: 'Demo City B',
-                          date: format(new Date(), 'yyyy-MM-dd'),
-                          time: '12:00 PM',
-                          pickupPoint: 'Point A',
-                          dropoffPoint: 'Point B',
-                          availableSeats: 4,
-                          price: 2500,
-                          status: 'available',
-                          participants: [user.uid, 'demo-passenger'],
-                          rewardStatus: {
-                            [user.uid]: {
-                              name: user.displayName || 'Me',
-                              startTimeConfirmed: false,
-                              driverConfirmed: false,
-                              passengerConfirmed: false,
-                              rewardIssued: false
-                            }
-                          },
-                          createdAt: serverTimestamp()
-                        };
-                        await addDoc(collection(db, 'rides'), testRide);
-                        toast.success("Test Ride create ho gayi! Ab Dashboard mein ja kar check karein.");
-                        setView('dashboard');
-                      } catch (error) {
-                        console.error("Error creating test ride:", error);
-                        toast.error("Test ride create nahi ho saki.");
-                      }
-                    }}
-                  >
-                    Test Dashboard Flow
-                  </Button>
-                </div>
-              </div>
-
-              <div className="p-6 bg-slate-900 rounded-2xl text-white space-y-4">
-                <h4 className="font-bold flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-yellow-400" />
-                  Flow Steps Demo
-                </h4>
-                <ol className="text-sm space-y-3 text-slate-300 list-decimal list-inside">
-                  <li>Upar wala button dabayein.</li>
-                  <li>Mobile ka Notification Panel check karein.</li>
-                  <li>Notification par click karein (App khulegi aur modal aayega).</li>
-                  <li>Modal par "Haan" click karein (Success modal aayega).</li>
-                  <li>Success modal band karein ya back jayen (Full Screen Ad aayega).</li>
-                </ol>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>
