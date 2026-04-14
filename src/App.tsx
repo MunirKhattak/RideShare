@@ -173,122 +173,138 @@ export default function App() {
   const prevRidesRef = useRef<Record<string, any>>({});
   const lastNotificationRef = useRef<Record<string, number>>({});
 
-  // Monitor Rides for Notifications
+  // Monitor Rides and Requests for Notifications
   useEffect(() => {
     if (!user) return;
 
-    const q = query(
-      collection(db, 'rides'),
-      where('participants', 'array-contains', user.uid)
-    );
+    const monitorCollection = (collectionName: 'rides' | 'rideRequests') => {
+      const q = query(
+        collection(db, collectionName),
+        where('participants', 'array-contains', user.uid)
+      );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        const ride = { id: change.doc.id, ...change.doc.data() } as any;
-        const oldRide = prevRidesRef.current[ride.id];
+      return onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          const ride = { id: change.doc.id, ...change.doc.data() } as any;
+          const oldRide = prevRidesRef.current[ride.id];
 
-        if (change.type === 'modified' && oldRide) {
-          const isDriver = user.uid === ride.driverId;
+          if (change.type === 'modified' && oldRide) {
+            const isDriver = user.uid === ride.driverId;
+            
+            // 1. Check for Start Confirmation from OTHER user
+            const otherParticipants = ride.participants?.filter((id: string) => id !== user.uid) || [];
+            
+            otherParticipants.forEach((otherId: string) => {
+              const newOtherStatus = ride.rewardStatus?.[otherId];
+              const oldOtherStatus = oldRide.rewardStatus?.[otherId];
+
+              // If other user confirmed start and they hadn't before
+              if (newOtherStatus?.startTimeConfirmed && !oldOtherStatus?.startTimeConfirmed) {
+                const role = isDriver ? 'Passenger' : 'Car Owner';
+                showNotification("Safar Shuru!", {
+                  body: `${role} ${newOtherStatus.name || 'User'} ne safar shuru hone ki tasdeeq kar di hai.`,
+                  tag: `start-confirmed-${ride.id}`,
+                  data: { url: `${window.location.origin}/?view=dashboard` }
+                });
+              }
+
+              // 2. Check for Completion from OTHER user
+              const newOtherConfirmed = isDriver ? newOtherStatus?.passengerConfirmed : newOtherStatus?.driverConfirmed;
+              const oldOtherConfirmed = isDriver ? oldOtherStatus?.passengerConfirmed : oldOtherStatus?.driverConfirmed;
+
+              if (newOtherConfirmed && !oldOtherConfirmed) {
+                const role = isDriver ? 'Passenger' : 'Car Owner';
+                showNotification("Safar Mukamal?", {
+                  body: `${role} ${newOtherStatus.name || 'User'} ne ride mukammal hone ka status diya hai. Click kar ke confirm karein.`,
+                  tag: `complete-other-${ride.id}`,
+                  data: { url: `${window.location.origin}/?view=dashboard&action=complete_ride&rideId=${ride.id}` }
+                });
+              }
+            });
+          }
           
-          // 1. Check for Start Confirmation from OTHER user
-          const otherParticipants = ride.participants?.filter((id: string) => id !== user.uid) || [];
-          
-          otherParticipants.forEach((otherId: string) => {
-            const newOtherStatus = ride.rewardStatus?.[otherId];
-            const oldOtherStatus = oldRide.rewardStatus?.[otherId];
+          // Update ref with latest data
+          prevRidesRef.current[ride.id] = ride;
+        });
 
-            // If other user confirmed start and they hadn't before
-            if (newOtherStatus?.startTimeConfirmed && !oldOtherStatus?.startTimeConfirmed) {
-              const role = isDriver ? 'Passenger' : 'Car Owner';
-              showNotification("Safar Shuru!", {
-                body: `${role} ${newOtherStatus.name} ne safar shuru hone ki tasdeeq kar di hai.`,
-                tag: `start-confirmed-${ride.id}`,
-                data: { url: `${window.location.origin}/?view=dashboard` }
-              });
-            }
-
-            // 2. Check for Completion from OTHER user
-            const newOtherConfirmed = isDriver ? newOtherStatus?.passengerConfirmed : newOtherStatus?.driverConfirmed;
-            const oldOtherConfirmed = isDriver ? oldOtherStatus?.passengerConfirmed : oldOtherStatus?.driverConfirmed;
-
-            if (newOtherConfirmed && !oldOtherConfirmed) {
-              const role = isDriver ? 'Passenger' : 'Car Owner';
-              showNotification("Safar Mukamal?", {
-                body: `${role} ${newOtherStatus.name} ne ride mukammal hone ka status diya hai. Click kar ke confirm karein.`,
-                tag: `complete-other-${ride.id}`,
-                data: { url: `${window.location.origin}/?view=dashboard&action=complete_ride&rideId=${ride.id}` }
-              });
-            }
+        // Initial load: populate ref
+        if (snapshot.docChanges().length === snapshot.docs.length) {
+          snapshot.docs.forEach(doc => {
+            prevRidesRef.current[doc.id] = { id: doc.id, ...doc.data() };
           });
         }
-        
-        // Update ref with latest data
-        prevRidesRef.current[ride.id] = ride;
       });
+    };
 
-      // Initial load: populate ref
-      if (snapshot.docChanges().length === snapshot.docs.length) {
-        snapshot.docs.forEach(doc => {
-          prevRidesRef.current[doc.id] = { id: doc.id, ...doc.data() };
-        });
-      }
-    });
+    const unsubRides = monitorCollection('rides');
+    const unsubRequests = monitorCollection('rideRequests');
 
-    return () => unsub();
+    return () => {
+      unsubRides();
+      unsubRequests();
+    };
   }, [user]);
 
   // Scheduled Reminders (30m and 5h AFTER start)
   useEffect(() => {
     if (!user) return;
 
-    const q = query(
-      collection(db, 'rides'),
-      where('participants', 'array-contains', user.uid)
-    );
+    const monitorReminders = (collectionName: 'rides' | 'rideRequests') => {
+      const q = query(
+        collection(db, collectionName),
+        where('participants', 'array-contains', user.uid)
+      );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const now = new Date().getTime();
-      snapshot.docs.forEach(doc => {
-        const ride = doc.data() as Ride;
-        const rideTime = new Date(`${ride.date}T${ride.time || '00:00'}`).getTime();
-        const diffMs = now - rideTime; // Time passed since start
-        const diffMins = diffMs / (1000 * 60);
-        const diffHours = diffMins / 60;
+      return onSnapshot(q, (snapshot) => {
+        const now = new Date().getTime();
+        snapshot.docs.forEach(doc => {
+          const ride = doc.data() as any;
+          const rideTime = new Date(`${ride.date}T${ride.time || '00:00'}`).getTime();
+          const diffMs = now - rideTime; // Time passed since start
+          const diffMins = diffMs / (1000 * 60);
+          const diffHours = diffMins / 60;
 
-        const myStatus = ride.rewardStatus?.[user.uid];
-        const rideKey = `${doc.id}-${user.uid}`;
+          const myStatus = ride.rewardStatus?.[user.uid];
+          const rideKey = `${doc.id}-${user.uid}`;
 
-        // 30 Minute AFTER Start Reminder
-        if (diffMins > 29 && diffMins < 40 && !myStatus?.startTimeConfirmed) {
-          const lastTime = lastNotificationRef.current[`${rideKey}-start`];
-          if (!lastTime || (now - lastTime > 15 * 60 * 1000)) { // 15 mins throttle
-            showNotification("Kia ap ne Safar shuru kr lya?", {
-              body: `Aap ka safar (${ride.origin} se ${ride.destination}) shuru karne ka waqt ho chuka hai.`,
-              tag: `reminder-start-30m-${doc.id}`,
-              data: { url: `${window.location.origin}/?view=dashboard&action=start_ride&rideId=${doc.id}` }
-            });
-            lastNotificationRef.current[`${rideKey}-start`] = now;
+          // 30 Minute AFTER Start Reminder (Window widened to 2 hours for reliability)
+          if (diffMins > 29 && diffMins < 120 && !myStatus?.startTimeConfirmed) {
+            const lastTime = lastNotificationRef.current[`${rideKey}-start`];
+            if (!lastTime || (now - lastTime > 15 * 60 * 1000)) { // 15 mins throttle
+              showNotification("Kia ap ne Safar shuru kr lya?", {
+                body: `Aap ka safar (${ride.origin} se ${ride.destination}) shuru karne ka waqt ho chuka hai.`,
+                tag: `reminder-start-30m-${doc.id}`,
+                data: { url: `${window.location.origin}/?view=dashboard&action=start_ride&rideId=${doc.id}` }
+              });
+              lastNotificationRef.current[`${rideKey}-start`] = now;
+            }
           }
-        }
 
-        // 5 Hour AFTER Start Reminder
-        if (diffHours > 4.9 && diffHours < 5.5 && (!myStatus?.driverConfirmed && !myStatus?.passengerConfirmed)) {
-          const lastTime = lastNotificationRef.current[`${rideKey}-complete`];
-          if (!lastTime || (now - lastTime > 15 * 60 * 1000)) { // 15 mins throttle
-            showNotification("Kia apka safar mukamal hua?", {
-              body: `Aap ka safar (${ride.origin} se ${ride.destination}) shuru hue 5 ghantay ho gaye hain.`,
-              tag: `reminder-complete-5h-${doc.id}`,
-              data: { url: `${window.location.origin}/?view=dashboard&action=complete_ride&rideId=${doc.id}` }
-            });
-            lastNotificationRef.current[`${rideKey}-complete`] = now;
+          // 5 Hour AFTER Start Reminder
+          if (diffHours > 4.9 && diffHours < 12 && (!myStatus?.driverConfirmed && !myStatus?.passengerConfirmed)) {
+            const lastTime = lastNotificationRef.current[`${rideKey}-complete`];
+            if (!lastTime || (now - lastTime > 15 * 60 * 1000)) { // 15 mins throttle
+              showNotification("Kia apka safar mukamal hua?", {
+                body: `Aap ka safar (${ride.origin} se ${ride.destination}) shuru hue 5 ghantay ho gaye hain.`,
+                tag: `reminder-complete-5h-${doc.id}`,
+                data: { url: `${window.location.origin}/?view=dashboard&action=complete_ride&rideId=${doc.id}` }
+              });
+              lastNotificationRef.current[`${rideKey}-complete`] = now;
+            }
           }
-        }
+        });
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, collectionName);
       });
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'rides');
-    });
+    };
 
-    return () => unsub();
+    const unsubRides = monitorReminders('rides');
+    const unsubRequests = monitorReminders('rideRequests');
+
+    return () => {
+      unsubRides();
+      unsubRequests();
+    };
   }, [user]);
 
   useEffect(() => {
@@ -862,30 +878,36 @@ export default function App() {
   // Visit Tracking
   useEffect(() => {
     const trackVisit = async () => {
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const analyticsRef = doc(db, 'analytics', today);
       try {
-        // Test connection first
+        // CRITICAL: Test connection first as per instructions
         try {
-          await getDocFromServer(doc(db, 'test', 'connection'));
-        } catch (e) {
-          if (e instanceof Error && e.message.includes('the client is offline')) {
-            console.warn("Firestore is offline, skipping visit tracking.");
+          await getDocFromServer(doc(db, '_connection_test_', 'ping'));
+        } catch (e: any) {
+          if (e?.message?.toLowerCase().includes('offline')) {
+            console.warn("Firestore is offline or config is incorrect. Skipping visit tracking.");
             return;
           }
         }
 
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const analyticsRef = doc(db, 'analytics', today);
         const docSnap = await getDoc(analyticsRef);
+        
         if (docSnap.exists()) {
           await updateDoc(analyticsRef, { visits: increment(1) });
         } else {
           await setDoc(analyticsRef, { visits: 1 });
         }
-      } catch (error) {
-        console.error("Visit tracking error:", error);
+      } catch (error: any) {
+        // Only log if it's not an offline error to avoid spamming the console
+        if (!error?.message?.toLowerCase().includes('offline')) {
+          console.error("Visit tracking error:", error);
+        }
       }
     };
-    trackVisit();
+    
+    const timer = setTimeout(trackVisit, 5000);
+    return () => clearTimeout(timer);
   }, []);
 
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
@@ -934,17 +956,29 @@ export default function App() {
       await updateDoc(bookingRef, { status });
 
       if (status === 'confirmed') {
+        const rewardStatus = {
+          name: bookingData.passengerName,
+          startTimeConfirmed: false,
+          driverConfirmed: false,
+          passengerConfirmed: false,
+          rewardIssued: false
+        };
+
         if (bookingData.type === 'ride_booking') {
           const rideRef = doc(db, 'rides', bookingData.rideId);
           await updateDoc(rideRef, {
             availableSeats: increment(-bookingData.seats),
-            participants: arrayUnion(bookingData.passengerId)
+            participants: arrayUnion(bookingData.passengerId),
+            [`rewardStatus.${bookingData.passengerId}`]: rewardStatus
           });
         } else {
           const requestRef = doc(db, 'rideRequests', bookingData.rideId);
           await updateDoc(requestRef, {
             status: 'matched',
-            participants: arrayUnion(bookingData.driverId)
+            participants: arrayUnion(bookingData.driverId),
+            driverId: bookingData.driverId,
+            driverName: bookingData.driverName,
+            [`rewardStatus.${bookingData.passengerId}`]: rewardStatus
           });
         }
         toast.success("Booking confirm ho gayi!");
@@ -2187,7 +2221,8 @@ function Dashboard({
   onUpdateBookingStatus: (id: string, status: 'confirmed' | 'cancelled') => void
 }) {
   const userRole = profile?.role || 'passenger';
-  const [activeRides, setActiveRides] = useState<any[]>([]);
+  const [activeRidesList, setActiveRidesList] = useState<any[]>([]);
+  const [activeRequestsList, setActiveRequestsList] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -2196,10 +2231,24 @@ function Dashboard({
       where('participants', 'array-contains', user.uid)
     );
     return onSnapshot(q, (snap) => {
-      const rides = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setActiveRides(rides);
+      const rides = snap.docs.map(doc => ({ id: doc.id, collection: 'rides', ...doc.data() }));
+      setActiveRidesList(rides);
     });
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(
+      collection(db, 'rideRequests'),
+      where('participants', 'array-contains', user.uid)
+    );
+    return onSnapshot(q, (snap) => {
+      const requests = snap.docs.map(doc => ({ id: doc.id, collection: 'rideRequests', ...doc.data() }));
+      setActiveRequestsList(requests);
+    });
+  }, [user]);
+
+  const activeRides = useMemo(() => [...activeRidesList, ...activeRequestsList], [activeRidesList, activeRequestsList]);
 
   const rewardTasks = useMemo(() => {
     if (!user) return [];
@@ -2299,7 +2348,7 @@ function Dashboard({
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-slate-900 truncate">
-                            {isDriver ? `Passenger: ${status.name}` : `${ride.origin} to ${ride.destination}`}
+                            {isDriver ? `Passenger: ${status.name || 'User'}` : `${ride.origin} to ${ride.destination}`}
                             {otherConfirmed && <span className="ml-2 text-[10px] text-emerald-600 font-normal">(Mukamal ✓)</span>}
                           </p>
                           <p className="text-[10px] text-slate-500">
