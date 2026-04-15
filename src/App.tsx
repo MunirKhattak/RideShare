@@ -2809,6 +2809,7 @@ function LoadingSpinner() {
 }
 
 function PostForm({ user, profile, setView, type, editItem }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, type: 'ride' | 'request', editItem?: any }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     origin: editItem?.origin || '',
     destination: editItem?.destination || '',
@@ -2823,12 +2824,13 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || isSubmitting) return;
+    setIsSubmitting(true);
     const collectionName = type === 'ride' ? 'rides' : 'rideRequests';
     try {
       const data = type === 'ride' ? {
         driverId: user.uid,
-        driverName: user.displayName,
+        driverName: profile?.displayName || user.displayName || 'User',
         driverPhoto: user.photoURL,
         phoneNumber: profile?.phoneNumber || '',
         whatsappNumber: profile?.whatsappNumber || '',
@@ -2848,7 +2850,7 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
         ...(editItem ? {} : { createdAt: serverTimestamp() })
       } : {
         passengerId: user.uid,
-        passengerName: user.displayName,
+        passengerName: profile?.displayName || user.displayName || 'User',
         passengerPhoto: user.photoURL,
         phoneNumber: profile?.phoneNumber || '',
         whatsappNumber: profile?.whatsappNumber || '',
@@ -2858,6 +2860,8 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
         date: formData.date,
         day: formData.day,
         time: formData.time,
+        pickupPoint: formData.pickupPoint,
+        dropoffPoint: formData.dropoffPoint,
         status: editItem ? editItem.status : 'pending',
         finalStatus: editItem ? editItem.finalStatus : 'pending',
         participants: editItem?.participants || [user.uid],
@@ -2874,6 +2878,8 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
       setView('dashboard');
     } catch (error) {
       handleFirestoreError(error, editItem ? OperationType.UPDATE : OperationType.CREATE, editItem ? `${collectionName}/${editItem.id}` : collectionName);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -2919,6 +2925,16 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
             <Label>Waqt (Time)</Label>
             <Input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} required />
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Pickup Point</Label>
+              <Input placeholder="e.g. Main Chowk" value={formData.pickupPoint} onChange={e => setFormData({...formData, pickupPoint: e.target.value})} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Dropoff Point</Label>
+              <Input placeholder="e.g. Faizabad" value={formData.dropoffPoint} onChange={e => setFormData({...formData, dropoffPoint: e.target.value})} required />
+            </div>
+          </div>
           {type === 'ride' && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -2946,7 +2962,9 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
               </div>
             </div>
           )}
-          <Button type="submit" className="w-full bg-blue-600">{type === 'ride' ? 'Post Karein' : 'Add Laga Den'}</Button>
+          <Button type="submit" className="w-full bg-blue-600" disabled={isSubmitting}>
+            {isSubmitting ? 'Processing...' : (type === 'ride' ? 'Post Karein' : 'Add Laga Den')}
+          </Button>
         </form>
       </CardContent>
     </Card>

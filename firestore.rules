@@ -121,7 +121,7 @@ service cloud.firestore {
 
     function isValidRide(data) {
       return hasRequiredFields(['driverId', 'driverName', 'origin', 'destination', 'date', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'participants', 'createdAt']) &&
-             hasOnlyAllowedFields(['driverId', 'driverName', 'driverPhoto', 'phoneNumber', 'whatsappNumber', 'origin', 'destination', 'date', 'day', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'participants', 'finalStatus', 'interactions', 'rewardStatus', 'statusReportedAt', 'createdAt']) &&
+             hasOnlyAllowedFields(['driverId', 'driverName', 'driverPhoto', 'phoneNumber', 'whatsappNumber', 'bio', 'origin', 'destination', 'date', 'day', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'participants', 'finalStatus', 'interactions', 'rewardStatus', 'statusReportedAt', 'createdAt']) &&
              data.driverId == request.auth.uid &&
              data.participants is list && request.auth.uid in data.participants &&
              data.availableSeats is number &&
@@ -132,7 +132,7 @@ service cloud.firestore {
 
     function isValidRideRequest(data) {
       return hasRequiredFields(['passengerId', 'passengerName', 'origin', 'destination', 'date', 'time', 'status', 'participants', 'createdAt']) &&
-             hasOnlyAllowedFields(['passengerId', 'passengerName', 'passengerPhoto', 'phoneNumber', 'whatsappNumber', 'origin', 'destination', 'date', 'day', 'time', 'status', 'participants', 'finalStatus', 'interactions', 'rewardStatus', 'statusReportedAt', 'createdAt']) &&
+             hasOnlyAllowedFields(['passengerId', 'passengerName', 'passengerPhoto', 'phoneNumber', 'whatsappNumber', 'bio', 'origin', 'destination', 'date', 'day', 'time', 'status', 'participants', 'finalStatus', 'interactions', 'rewardStatus', 'statusReportedAt', 'createdAt']) &&
              data.passengerId == request.auth.uid &&
              data.participants is list && request.auth.uid in data.participants &&
              data.status in ['pending', 'matched', 'cancelled'] &&
