@@ -193,31 +193,35 @@ export default function App() {
           if (change.type === 'modified' && oldRide) {
             const isDriver = user.uid === ride.driverId;
             
-            // 1. Check for Start Confirmation from OTHER user
-            const otherParticipants = ride.participants?.filter((id: string) => id !== user.uid) || [];
+            // Monitor rewardStatus for changes from OTHER users
+            const passengers = Object.keys(ride.rewardStatus || {});
             
-            otherParticipants.forEach((otherId: string) => {
-              const newOtherStatus = ride.rewardStatus?.[otherId];
-              const oldOtherStatus = oldRide.rewardStatus?.[otherId];
+            passengers.forEach((pId) => {
+              const newStatus = ride.rewardStatus[pId];
+              const oldStatus = oldRide.rewardStatus?.[pId];
+              if (!newStatus || !oldStatus) return;
 
-              // If other user confirmed start and they hadn't before
-              if (newOtherStatus?.startTimeConfirmed && !oldOtherStatus?.startTimeConfirmed) {
-                const role = isDriver ? 'Passenger' : 'Car Owner';
+              const isMePassenger = user.uid === pId;
+              const isRelevantToMe = isDriver || isMePassenger;
+              if (!isRelevantToMe) return;
+
+              // 1. Check for Start Confirmation from OTHER user
+              if (newStatus.startTimeConfirmed && !oldStatus.startTimeConfirmed && newStatus.startConfirmedBy !== user.uid) {
+                const otherName = isDriver ? (newStatus.name || 'Passenger') : (ride.driverName || 'Car Owner');
                 showNotification("Safar Shuru!", {
-                  body: `${role} ${newOtherStatus.name || 'User'} ne safar shuru hone ki tasdeeq kar di hai.`,
+                  body: `${otherName} ne safar shuru hone ki tasdeeq kar di hai. Click kar ke confirm karein.`,
                   tag: `start-confirmed-${ride.id}`,
-                  data: { url: `${window.location.origin}/?view=dashboard` }
+                  data: { url: `${window.location.origin}/?view=dashboard&action=start_ride&rideId=${ride.id}` }
                 });
               }
 
               // 2. Check for Completion from OTHER user
-              const newOtherConfirmed = isDriver ? newOtherStatus?.passengerConfirmed : newOtherStatus?.driverConfirmed;
-              const oldOtherConfirmed = isDriver ? oldOtherStatus?.passengerConfirmed : oldOtherStatus?.driverConfirmed;
-
-              if (newOtherConfirmed && !oldOtherConfirmed) {
-                const role = isDriver ? 'Passenger' : 'Car Owner';
+              const newOtherConfirmed = isDriver ? (newStatus.passengerConfirmed && !oldStatus.passengerConfirmed) : (newStatus.driverConfirmed && !oldStatus.driverConfirmed);
+              
+              if (newOtherConfirmed && newStatus.lastConfirmedBy !== user.uid) {
+                const otherName = isDriver ? (newStatus.name || 'Passenger') : (ride.driverName || 'Car Owner');
                 showNotification("Safar Mukamal?", {
-                  body: `${role} ${newOtherStatus.name || 'User'} ne ride mukammal hone ka status diya hai. Click kar ke confirm karein.`,
+                  body: `${otherName} ne ride mukammal hone ka status diya hai. Click kar ke confirm karein.`,
                   tag: `complete-other-${ride.id}`,
                   data: { url: `${window.location.origin}/?view=dashboard&action=complete_ride&rideId=${ride.id}` }
                 });
@@ -988,14 +992,16 @@ export default function App() {
 
       if (task.type === 'start') {
         await updateDoc(rideRef, {
-          [`${rewardKey}.startTimeConfirmed`]: true
+          [`${rewardKey}.startTimeConfirmed`]: true,
+          [`${rewardKey}.startConfirmedBy`]: user.uid
         });
         setRewardTask({ ...task, type: 'start_success' });
         toast.success("Safar shuru hone ki tasdeeq ho gayi!");
       } else if (task.type === 'complete') {
         const isDriver = user?.uid === task.ride.driverId;
         await updateDoc(rideRef, {
-          [`${rewardKey}.${isDriver ? 'driverConfirmed' : 'passengerConfirmed'}`]: true
+          [`${rewardKey}.${isDriver ? 'driverConfirmed' : 'passengerConfirmed'}`]: true,
+          [`${rewardKey}.lastConfirmedBy`]: user.uid
         });
         setRewardTask({ ...task, type: 'success' });
         toast.success("Ride completion status bhej diya gaya!");
