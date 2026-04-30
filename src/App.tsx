@@ -61,7 +61,9 @@ import {
   Gift,
   X,
   PlayCircle,
-  WifiOff
+  WifiOff,
+  Smartphone,
+  Download
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1262,12 +1264,13 @@ function Header({ user, setView, onSignInClick, onInstall }: { user: User | null
         <div className="flex items-center gap-3">
           {onInstall && (
             <Button 
-              variant="outline" 
+              variant="default" 
               size="sm" 
-              className="rounded-full border-blue-500 text-blue-600 hover:bg-blue-50 h-8 text-xs font-bold animate-slow-blink" 
+              className="rounded-full bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white h-9 px-4 gap-2 text-xs font-black shadow-lg shadow-blue-200 animate-pulse-subtle border-none" 
               onClick={onInstall}
             >
-              Install App
+              <Smartphone className="w-4 h-4" />
+              <span>Install App</span>
             </Button>
           )}
           {user && user.email === 'munirkhattak.pk@gmail.com' && (
