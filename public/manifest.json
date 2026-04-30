@@ -1,15 +1,43 @@
 {
-  "name": "EasyTravel App",
+  "name": "EasyTravel - Inter-city Ride Sharing",
   "short_name": "EasyTravel",
+  "description": "Connecting drivers and passengers for reliable travel between Karak and other major cities.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
   "theme_color": "#2563eb",
   "icons": [
     {
       "src": "/icon.svg",
       "sizes": "192x192",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["travel", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Search Rides",
+      "url": "/?view=search",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Post Ride",
+      "url": "/?view=post",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
     }
   ]
 }

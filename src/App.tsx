@@ -6,6 +6,7 @@ import {
   query, 
   where, 
   onSnapshot, 
+  getDocs,
   addDoc, 
   updateDoc, 
   doc, 
@@ -59,7 +60,8 @@ import {
   Coins,
   Gift,
   X,
-  PlayCircle
+  PlayCircle,
+  WifiOff
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { motion, AnimatePresence } from 'motion/react';
@@ -80,7 +82,7 @@ const trackInteraction = async (rideId: string, type: 'call' | 'whatsapp' | 'cha
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint'>('main');
+  const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint' | 'privacy_policy'>('main');
   const [activeWarning, setActiveWarning] = useState<Warning | null>(null);
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -90,6 +92,18 @@ export default function App() {
   const [showInterstitialAd, setShowInterstitialAd] = useState(false);
 
   const [waModalData, setWaModalData] = useState<any>(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
   const [pendingStatusReport, setPendingStatusReport] = useState<any>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [allRides, setAllRides] = useState<Ride[]>([]);
@@ -1042,6 +1056,7 @@ export default function App() {
             onCompleteRide={setRewardTask}
             activeBookings={activeBookings}
             onUpdateBookingStatus={handleUpdateBookingStatus}
+            isOnline={isOnline}
           />
         );
       case 'post':
@@ -1071,6 +1086,8 @@ export default function App() {
         return <AdminDashboard setView={setView} showNotification={showNotification} allRides={allRides} user={user} />;
       case 'complaint':
         return <ComplaintForm user={user} profile={profile} setView={setView} />;
+      case 'privacy_policy':
+        return <PrivacyPolicy setView={setView} />;
       default:
         return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} />;
     }
@@ -1079,6 +1096,18 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Toaster position="top-center" />
+      
+      {!isOnline && (
+        <motion.div 
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          className="bg-red-600 text-white text-[10px] py-1 px-4 text-center font-bold sticky top-0 z-[60] flex items-center justify-center gap-2"
+        >
+          <WifiOff className="w-3 h-3" />
+          Internet nahi hai! Kuch features sahi kaam nahi karenge.
+        </motion.div>
+      )}
+
       <Header user={user} setView={setView} onSignInClick={() => setShowSignInModal(true)} onInstall={deferredPrompt ? handleInstall : undefined} />
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-8">
         <AnimatePresence mode="wait">
@@ -1796,6 +1825,44 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any, it
           </Card>
         </motion.div>
       </div>
+
+    </div>
+  );
+}
+
+function PrivacyPolicy({ setView }: { setView: (v: any) => void }) {
+  return (
+    <div className="space-y-6 py-6 pb-20">
+      <div className="flex items-center gap-3 mb-4">
+        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setView('main')}>
+          <ArrowLeft className="w-6 h-6" />
+        </Button>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight text-center flex-1">Privacy Policy</h2>
+      </div>
+
+      <Card className="border-none shadow-xl rounded-[2.5rem] overflow-hidden bg-white/70 backdrop-blur-md">
+        <CardContent className="p-8 space-y-6">
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <h3 className="text-xl font-bold text-blue-600">Humari Zimedaari</h3>
+            </div>
+            <p className="text-slate-600 text-sm md:text-base leading-relaxed font-outfit">
+              EasyTravel aapki privacy ka mukammal ehtiram karti hai. Hum aapka data sirf behtar user experience aur safety ke liye istemal karte hain. Hamara maqsad apke elaaqay mein travel ko safe aur sasta banana hai.
+            </p>
+          </section>
+
+          <div className="pt-6">
+            <Button className="w-full bg-blue-600 hover:bg-blue-700 h-14 rounded-2xl font-black text-lg gap-2 shadow-lg shadow-blue-100 active:scale-95 transition-all" onClick={() => setView('main')}>
+              <Check className="w-6 h-6" /> Samajh Gaya
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      
+      <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">Version 2.1.0 • Updated: 30 April 2026</p>
     </div>
   );
 }
@@ -2197,7 +2264,8 @@ function Dashboard({
   onRewardAction, 
   onCompleteRide,
   activeBookings,
-  onUpdateBookingStatus
+  onUpdateBookingStatus,
+  isOnline
 }: { 
   user: User | null, 
   profile: UserProfile | null, 
@@ -2205,7 +2273,8 @@ function Dashboard({
   onRewardAction: (task: any) => void, 
   onCompleteRide: (task: any) => void,
   activeBookings: Booking[],
-  onUpdateBookingStatus: (id: string, status: 'confirmed' | 'cancelled') => void
+  onUpdateBookingStatus: (id: string, status: 'confirmed' | 'cancelled') => void,
+  isOnline: boolean
 }) {
   const userRole = profile?.role || 'passenger';
   const [activeRidesList, setActiveRidesList] = useState<any[]>([]);
@@ -2330,6 +2399,16 @@ function Dashboard({
 
   return (
     <div className="space-y-6 py-4">
+      {!isOnline && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-2xl text-sm font-medium flex items-center gap-3 shadow-sm"
+        >
+          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+          <p>Aap is waqt offline hain. Meherbani farma kar apna internet connection check karein aur page reload karein.</p>
+        </motion.div>
+      )}
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -2727,14 +2806,23 @@ const AnimatedFooter = memo(function AnimatedFooter({ setView }: { setView: (v: 
           </div>
 
           <div className="flex flex-col items-center gap-2 pt-4">
-            <p className="text-slate-400 font-normal text-sm font-sans">For any Complaint or Query</p>
-            <Button 
-              variant="link" 
-              className="text-blue-400 font-medium text-lg p-0 h-auto hover:no-underline hover:text-blue-500 transition-colors font-sans"
-              onClick={() => setView('complaint')}
-            >
-              Contact Us
-            </Button>
+            <div className="flex items-center gap-4">
+              <Button 
+                variant="link" 
+                className="text-slate-400 font-medium text-sm p-0 h-auto hover:no-underline hover:text-blue-500 transition-colors font-sans"
+                onClick={() => setView('complaint')}
+              >
+                Contact Us
+              </Button>
+              <span className="text-slate-200">|</span>
+              <Button 
+                variant="link" 
+                className="text-slate-400 font-medium text-sm p-0 h-auto hover:no-underline hover:text-blue-500 transition-colors font-sans"
+                onClick={() => setView('privacy_policy')}
+              >
+                Privacy Policy
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -3801,26 +3889,43 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
       
       for (const collName of collections) {
         const q = query(collection(db, collName));
-        const snapshot = await getCountFromServer(q);
-        if (snapshot.data().count > 0) {
-          const unsub = onSnapshot(q, (s) => {
-            s.docs.forEach(async (d) => {
-              const data = d.data();
-              if (
-                (data.origin && data.origin.toLowerCase().includes('karachi')) ||
-                (data.destination && data.destination.toLowerCase().includes('karachi'))
-              ) {
-                await deleteDoc(doc(db, collName, d.id));
-              }
-            });
-          });
-          setTimeout(() => unsub(), 3000);
+        const snapshot = await getDocs(q);
+        for (const d of snapshot.docs) {
+          const data = d.data();
+          if (
+            (data.origin && data.origin.toLowerCase().includes('karachi')) ||
+            (data.destination && data.destination.toLowerCase().includes('karachi'))
+          ) {
+            await deleteDoc(doc(db, collName, d.id));
+          }
         }
       }
-      toast.success(`Cleanup process shuru ho gaya hai. Karachi se mutaliq posts delete ho jayengi.`);
+      toast.success(`Karachi se mutaliq posts delete ho gayi hain.`);
     } catch (error) {
       console.error("Cleanup error:", error);
       toast.error("Cleanup mein masla aaya.");
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
+  const handleFullReset = async () => {
+    if (!window.confirm("CRITICAL: Kia aap waqai TAMAM rides, requests aur bookings delete kar ke app ko fresh karna chahte hain? Ye amal wapis nahi ho sakta.")) return;
+    setIsCleaning(true);
+    try {
+      const targetCollections = ['rides', 'rideRequests', 'bookings', 'complaints', 'warnings'];
+      
+      for (const collName of targetCollections) {
+        const q = query(collection(db, collName));
+        const snapshot = await getDocs(q);
+        for (const d of snapshot.docs) {
+          await deleteDoc(doc(db, collName, d.id));
+        }
+      }
+      toast.success(`System mukammal taur per clean ho gaya hai!`);
+    } catch (error) {
+      console.error("Reset error:", error);
+      toast.error("Reset process mein masla aaya.");
     } finally {
       setIsCleaning(false);
     }
@@ -3893,17 +3998,34 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
                 System Cleanup
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex items-center justify-between">
-              <p className="text-xs text-red-600">Karachi se mutaliq tamam posts aur bookings delete karein.</p>
-              <Button 
-                variant="destructive" 
-                size="sm" 
-                onClick={handleCleanupKarachi}
-                disabled={isCleaning}
-                className="h-8 text-xs font-bold"
-              >
-                {isCleaning ? 'Cleaning...' : 'Cleanup Karachi'}
-              </Button>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-red-600">Karachi se mutaliq tamam posts aur bookings delete karein.</p>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={handleCleanupKarachi}
+                  disabled={isCleaning}
+                  className="h-8 text-xs font-bold"
+                >
+                  {isCleaning ? 'Cleaning...' : 'Cleanup Karachi'}
+                </Button>
+              </div>
+              <div className="flex items-center justify-between pt-4 border-t border-red-100">
+                <div>
+                  <p className="text-xs text-red-800 font-black">FULL SYSTEM RESET</p>
+                  <p className="text-[10px] text-red-500">Tamam posts, bookings aur complaints uraaen.</p>
+                </div>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={handleFullReset}
+                  disabled={isCleaning}
+                  className="h-10 px-4 text-xs font-black shadow-lg shadow-red-100"
+                >
+                  {isCleaning ? 'Resetting...' : 'APP FRESH KAREIN'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
