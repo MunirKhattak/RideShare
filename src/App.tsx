@@ -2726,57 +2726,61 @@ function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick }: { setV
           {results.length === 0 ? (
             <EmptyState message="Filhal koi post nahi mili." />
           ) : (
-            results.map((item, index) => (
-              <div key={item.id}>
-                <Card className="hover:border-blue-400 cursor-pointer" onClick={() => setView('profile_view', item)}>
-                  <CardHeader className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={item.driverPhoto || item.passengerPhoto} />
-                          <AvatarFallback>U</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <CardTitle className="text-base">{item.driverName || item.passengerName}</CardTitle>
-                          <CardDescription>{item.date} | {item.time}</CardDescription>
+            <div className="space-y-4">
+              {results.map((item) => (
+                <div key={item.id}>
+                  <Card className="hover:border-blue-400 cursor-pointer" onClick={() => setView('profile_view', item)}>
+                    <CardHeader className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarImage src={item.driverPhoto || item.passengerPhoto} />
+                            <AvatarFallback>U</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <CardTitle className="text-base">{item.driverName || item.passengerName}</CardTitle>
+                            <CardDescription>{item.date} | {item.time}</CardDescription>
+                          </div>
                         </div>
+                        {item.price && <div className="font-bold text-blue-600">Rs. {item.price}</div>}
                       </div>
-                      {item.price && <div className="font-bold text-blue-600">Rs. {item.price}</div>}
-                    </div>
-                  </CardHeader>
-                  <CardFooter className="p-3 bg-slate-50/50 flex flex-col gap-2">
-                    <Button 
-                      className="w-full bg-slate-900 hover:bg-black text-white font-black rounded-xl h-12 shadow-lg shadow-slate-200 transition-all active:scale-95" 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        onBookClick(item); 
-                      }}
-                    >
-                      {item.driverId ? 'Book Your Seat' : 'Book Passenger'}
-                    </Button>
-                    <div className="flex gap-2 w-full">
-                      <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-blue-600 border-blue-100 bg-blue-50/50 hover:bg-blue-100" onClick={(e) => { 
-                        e.stopPropagation(); 
-                        trackInteraction(item.id, 'chat', userRole === 'driver' ? 'rideRequests' : 'rides');
-                        setView('chat', item); 
-                      }}><MessageSquare className="w-3 h-3" /> Chat</Button>
-                      <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-green-600 border-green-100 bg-green-50/50 hover:bg-green-100" onClick={(e) => { 
-                        e.stopPropagation(); 
-                        trackInteraction(item.id, 'whatsapp', userRole === 'driver' ? 'rideRequests' : 'rides');
-                        onWhatsAppClick(item); 
-                      }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
-                      <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-slate-600 border-slate-200 bg-white hover:bg-slate-50" onClick={(e) => { 
-                        e.stopPropagation(); 
-                        trackInteraction(item.id, 'call', userRole === 'driver' ? 'rideRequests' : 'rides');
-                        window.open(`tel:${item.whatsappNumber}`, '_self'); 
-                      }}><Phone className="w-3 h-3" /> Call</Button>
-                    </div>
-                  </CardFooter>
-                </Card>
-                {index === 1 && <AdSlot label="Search Result Ad" />}
-              </div>
-            ))
+                    </CardHeader>
+                    <CardFooter className="p-3 bg-slate-50/50 flex flex-col gap-2">
+                      <Button 
+                        className="w-full bg-slate-900 hover:bg-black text-white font-black rounded-xl h-12 shadow-lg shadow-slate-200 transition-all active:scale-95" 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          onBookClick(item); 
+                        }}
+                      >
+                        {item.driverId ? 'Book Your Seat' : 'Book Passenger'}
+                      </Button>
+                      <div className="flex gap-2 w-full">
+                        <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-blue-600 border-blue-100 bg-blue-50/50 hover:bg-blue-100" onClick={(e) => { 
+                          e.stopPropagation(); 
+                          trackInteraction(item.id, 'chat', userRole === 'driver' ? 'rideRequests' : 'rides');
+                          setView('chat', item); 
+                        }}><MessageSquare className="w-3 h-3" /> Chat</Button>
+                        <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-green-600 border-green-100 bg-green-50/50 hover:bg-green-100" onClick={(e) => { 
+                          e.stopPropagation(); 
+                          trackInteraction(item.id, 'whatsapp', userRole === 'driver' ? 'rideRequests' : 'rides');
+                          onWhatsAppClick(item); 
+                        }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
+                        <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-slate-600 border-slate-200 bg-white hover:bg-slate-50" onClick={(e) => { 
+                          e.stopPropagation(); 
+                          trackInteraction(item.id, 'call', userRole === 'driver' ? 'rideRequests' : 'rides');
+                          window.open(`tel:${item.whatsappNumber}`, '_self'); 
+                        }}><Phone className="w-3 h-3" /> Call</Button>
+                      </div>
+                    </CardFooter>
+                  </Card>
+                </div>
+              ))}
+            </div>
           )}
+          <div className="pt-4 border-t border-slate-100">
+            <AdSlot label="Search Results Ad" />
+          </div>
         </div>
       )}
     </div>
