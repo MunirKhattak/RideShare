@@ -1865,7 +1865,7 @@ function PrivacyPolicy({ setView }: { setView: (v: any) => void }) {
         </CardContent>
       </Card>
       
-      <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">Version 2.1.0 • Updated: 30 April 2026</p>
+      <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">Version 2.1.0 • Updated: 1 May 2026</p>
     </div>
   );
 }
