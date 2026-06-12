@@ -1982,7 +1982,7 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
     }
 
     try {
-      const customId = `RS-${Math.floor(100000 + Math.random() * 900000)}`;
+      const customId = `ET-${Math.floor(100000 + Math.random() * 900000)}`;
       const newProfile: UserProfile = {
         uid: user.uid,
         customId: customId,
