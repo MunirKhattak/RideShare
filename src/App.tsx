@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useRef, useMemo } from 'react';
-import { auth, db, signInWithGoogle, logout, handleFirestoreError, OperationType } from './firebase';
+import { app, auth, db, signInWithGoogle, logout, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { 
   collection, 
@@ -21,6 +21,7 @@ import {
   getCountFromServer,
   getDocFromServer
 } from 'firebase/firestore';
+import { getMessaging, getToken, isSupported } from 'firebase/messaging';
 import { UserProfile, Ride, RideRequest, ChatMessage, Complaint, Analytics, Warning, Booking } from './types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -164,6 +165,41 @@ export default function App() {
 
     // Always show in-app toast as well for immediate feedback
     toast.info(title, { description: body });
+  };
+
+  const registerFCMToken = async (currentUser: User) => {
+    try {
+      const supported = await isSupported();
+      if (!supported) {
+        console.log("FCM is not supported in this browser context (like direct frames or non-https development).");
+        return;
+      }
+      
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        return;
+      }
+
+      const messaging = getMessaging(app);
+      // NOTE: Go to Firebase Console -> Cloud Messaging -> Web Push Certificates to generate your VAPID key.
+      const vapidKey = "BKKpJJh54cVYm6MU0kB5jZ8cbzqdZ6agGvazaRfxplDzz8rfxGmrlRHHfW0iazo78VrZxEcS8RwjGpk4aAiIWio"; // Paste VAPID Public Key here if available.
+      
+      if (!vapidKey) {
+        console.log("FCM VAPID key background setup notice: To enable background push, add a Web Push VAPID key.");
+        return;
+      }
+
+      const fcmToken = await getToken(messaging, { vapidKey });
+      if (fcmToken) {
+        const userRef = doc(db, 'users', currentUser.uid);
+        await updateDoc(userRef, {
+          fcmTokens: arrayUnion(fcmToken)
+        });
+        console.log("Background FCM Token saved successfully to Firestore.");
+      }
+    } catch (err) {
+      console.warn("Background FCM setup: Dynamic check run completed safely:", err);
+    }
   };
 
   useEffect(() => {
@@ -627,6 +663,7 @@ export default function App() {
       try {
         setUser(currentUser);
         if (currentUser) {
+          registerFCMToken(currentUser);
           const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
           if (userDoc.exists()) {
             const p = userDoc.data() as UserProfile;
@@ -744,30 +781,54 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'rideRequests');
     });
 
-    // 3. Listen for new messages
+    // 3. Listen for new messages (index-free, resilient)
     const qMessages = query(
       collection(db, 'messages'),
-      where('receiverId', '==', user.uid),
-      orderBy('timestamp', 'desc'),
-      limit(5)
+      where('receiverId', '==', user.uid)
     );
     
     const unsubMessages = onSnapshot(qMessages, (snapshot) => {
+      // Mark any newly cached messages intended for us as 'delivered' if currently 'sent'
+      snapshot.docs.forEach((docSnap) => {
+        const msg = docSnap.data() as ChatMessage;
+        if (msg.status === 'sent') {
+          updateDoc(doc(db, 'messages', docSnap.id), { status: 'delivered' }).catch(console.error);
+        }
+      });
+
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const msg = change.doc.data() as ChatMessage;
           const isNew = !msg.timestamp || (msg.timestamp.toMillis && msg.timestamp.toMillis() > appLoadTime.current - 10000);
           
           if (isNew) {
-            showNotification('New Message', {
-              body: msg.text,
-              tag: `msg-${change.doc.id}`
-            });
+            // Check if the user is already viewing this chat to avoid double-notification
+            const isCurrentlyChatting = view === 'chat' && (
+              selectedItem?.otherUser?.uid === msg.senderId ||
+              selectedItem?.chat?.otherId === msg.senderId ||
+              selectedItem?.driverId === msg.senderId ||
+              selectedItem?.passengerId === msg.senderId
+            );
+
+            if (!isCurrentlyChatting) {
+              showNotification('New Message', {
+                body: msg.text,
+                tag: `msg-${change.doc.id}`
+              });
+
+              toast("Naya Peghaam", {
+                description: msg.text.length > 50 ? `${msg.text.slice(0, 50)}...` : msg.text,
+                action: {
+                  label: "Inbox",
+                  onClick: () => setView('messages')
+                }
+              });
+            }
           }
         }
       });
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'messages');
+      console.warn("Global qMessages listener issue, handled gracefully:", error);
     });
 
     // 4. Listen for new rides (for passengers)
@@ -1608,12 +1669,14 @@ function NewBookingCard({
   booking, 
   user, 
   onAction,
-  onStartRide
+  onStartRide,
+  setView
 }: { 
   booking: Booking, 
   user: User | null, 
   onAction: (id: string, status: 'confirmed' | 'cancelled') => void,
-  onStartRide?: () => void
+  onStartRide?: () => void,
+  setView: (v: any, item?: any) => void
 }) {
   const isDriver = user?.uid === booking.driverId;
   const otherUserName = isDriver ? booking.passengerName : booking.driverName;
@@ -1662,7 +1725,7 @@ function NewBookingCard({
               size="sm" 
               variant="outline" 
               className="h-12 rounded-2xl border-blue-100 bg-blue-50/50 text-blue-700 hover:bg-blue-100 hover:border-blue-200 gap-2 font-bold transition-all active:scale-95"
-              onClick={() => {/* In-app chat logic */}}
+              onClick={() => setView('chat', booking)}
             >
               <MessageSquare className="w-4 h-4" />
               Chat
@@ -2446,6 +2509,7 @@ function Dashboard({
                 user={user} 
                 onAction={onUpdateBookingStatus} 
                 onStartRide={() => handleStartRideFromBooking(booking)}
+                setView={setView}
               />
             ))}
           </div>
@@ -3176,9 +3240,11 @@ function DetailedProfileView({
 function Chat({ user, item, setView }: { user: User | null, item: any, setView: (v: any, item?: any) => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [fetchedOtherUser, setFetchedOtherUser] = useState<UserProfile | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const rideItem = item?.ride || item;
+  const chatRideId = rideItem?.rideId || rideItem?.id;
   
   // Determine other user details
   let otherUserId = item?.otherUser?.uid || item?.chat?.otherId;
@@ -3198,13 +3264,36 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
     }
   }
 
+  // Real-time user metadata fetching fallback
   useEffect(() => {
-    if (!user || !otherUserId || !rideItem) return;
+    if (!otherUserId) return;
+    let active = true;
+    const fetchUser = async () => {
+      try {
+        const docSnap = await getDoc(doc(db, 'users', otherUserId));
+        if (docSnap.exists() && active) {
+          setFetchedOtherUser(docSnap.data() as UserProfile);
+        }
+      } catch (err) {
+        console.error("Error fetching recipient profile:", err);
+      }
+    };
+    fetchUser();
+    return () => {
+      active = false;
+    };
+  }, [otherUserId]);
+
+  const activeOtherName = fetchedOtherUser?.displayName || otherUserName || 'Chat Partner';
+  const activeOtherPhoto = fetchedOtherUser?.photoURL || otherUserPhoto;
+
+  useEffect(() => {
+    if (!user || !otherUserId || !chatRideId) return;
 
     // Query messages where this user is a participant and it belongs to this ride
     const q = query(
       collection(db, 'messages'),
-      where('rideId', '==', rideItem.id),
+      where('rideId', '==', chatRideId),
       where('participants', 'array-contains', user.uid),
       orderBy('timestamp', 'asc')
     );
@@ -3226,27 +3315,27 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
     });
 
     return () => unsub();
-  }, [user, otherUserId, rideItem?.id]);
+  }, [user, otherUserId, chatRideId]);
 
-  const isDriver = user.uid === rideItem.driverId;
-  const isPassengerAlreadyAdded = rideItem.participants?.includes(otherUserId);
+  const isDriver = user?.uid === rideItem?.driverId;
+  const isPassengerAlreadyAdded = rideItem?.participants?.includes(otherUserId);
 
   const handleConfirmRide = async () => {
-    if (!isDriver || isPassengerAlreadyAdded || !otherUserId) return;
+    if (!isDriver || isPassengerAlreadyAdded || !otherUserId || !rideItem?.id) return;
     
     try {
       const rideRef = doc(db, 'rides', rideItem.id);
       await updateDoc(rideRef, {
         participants: arrayUnion(user.uid, otherUserId),
         [`rewardStatus.${otherUserId}`]: {
-          name: otherUserName,
+          name: activeOtherName,
           driverConfirmed: false,
           passengerConfirmed: false,
           rewardIssued: false,
           startTimeConfirmed: false
         }
       });
-      toast.success(`${otherUserName} ko ride mein shamil kar liya gaya hai!`);
+      toast.success(`${activeOtherName} ko ride mein shamil kar liya gaya hai!`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'rides');
     }
@@ -3254,7 +3343,7 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newMessage.trim() || !otherUserId || !rideItem) return;
+    if (!user || !newMessage.trim() || !otherUserId || !chatRideId) return;
 
     const msgText = newMessage.trim();
     setNewMessage('');
@@ -3265,7 +3354,7 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
         receiverId: otherUserId,
         participants: [user.uid, otherUserId],
         text: msgText,
-        rideId: rideItem.id,
+        rideId: chatRideId,
         status: 'sent',
         timestamp: serverTimestamp()
       });
@@ -3295,11 +3384,11 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <Avatar className="w-10 h-10 border-2 border-blue-100">
-          <AvatarImage src={otherUserPhoto} />
-          <AvatarFallback>{otherUserName?.charAt(0) || 'U'}</AvatarFallback>
+          <AvatarImage src={activeOtherPhoto} />
+          <AvatarFallback>{activeOtherName?.charAt(0) || 'U'}</AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
-          <CardTitle className="text-lg truncate">{otherUserName || 'User'}</CardTitle>
+          <CardTitle className="text-lg truncate">{activeOtherName}</CardTitle>
           <p className="text-xs text-slate-500 truncate">{rideItem.origin} to {rideItem.destination}</p>
         </div>
         {isDriver && !isPassengerAlreadyAdded && (
@@ -3336,13 +3425,13 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
                       <div className={`text-[10px] mt-1 opacity-60 flex items-center gap-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                         {msg.timestamp?.toDate ? format(msg.timestamp.toDate(), 'HH:mm') : ''}
                         {isMe && (
-                          <span className="ml-1">
+                          <span className="ml-1 flex items-center shrink-0">
                             {msg.status === 'read' ? (
-                              <CheckCheck className="w-3 h-3 text-cyan-300" />
+                              <CheckCheck className="w-3.5 h-3.5 text-sky-300 font-bold" />
                             ) : msg.status === 'delivered' ? (
-                              <CheckCheck className="w-3 h-3 text-blue-200" />
+                              <CheckCheck className="w-3.5 h-3.5 text-blue-200/80" />
                             ) : (
-                              <Check className="w-3 h-3 text-blue-200" />
+                              <Check className="w-3.5 h-3.5 text-blue-200/80" />
                             )}
                           </span>
                         )}
@@ -3390,16 +3479,34 @@ function Inbox({ user, setView }: { user: User | null, setView: (v: any, item?: 
     const unsub = onSnapshot(q, (snapshot) => {
       const allMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatMessage));
       
+      // Auto-deliver any incoming messages in the room if they are still 'sent'
+      allMessages.forEach(msg => {
+        if (msg.receiverId === user.uid && msg.status === 'sent') {
+          updateDoc(doc(db, 'messages', msg.id), { status: 'delivered' }).catch(console.error);
+        }
+      });
+
       const chatMap = new Map();
       allMessages.forEach(msg => {
-        const otherId = msg.participants.find(p => p !== user.uid);
+        const otherId = (msg.participants && msg.participants.find(p => p !== user.uid)) || 
+                        (msg.senderId === user.uid ? msg.receiverId : msg.senderId);
+        if (!otherId) return;
         const key = `${msg.rideId}_${otherId}`;
-        if (!chatMap.has(key)) {
-          chatMap.set(key, {
+        
+        let chatRoom = chatMap.get(key);
+        if (!chatRoom) {
+          chatRoom = {
             lastMessage: msg,
             otherId,
-            rideId: msg.rideId
-          });
+            rideId: msg.rideId,
+            unreadCount: 0
+          };
+          chatMap.set(key, chatRoom);
+        }
+        
+        // Count unread incoming messages
+        if (msg.receiverId === user.uid && msg.status !== 'read') {
+          chatRoom.unreadCount++;
         }
       });
 
@@ -3450,22 +3557,69 @@ function ChatListItem({ chat, user, setView }: { chat: any, user: User | null, s
   const [ride, setRide] = useState<any>(null);
 
   useEffect(() => {
+    let active = true;
     const fetchDetails = async () => {
       if (chat.otherId) {
-        const userDoc = await getDoc(doc(db, 'users', chat.otherId));
-        if (userDoc.exists()) setOtherUser(userDoc.data() as UserProfile);
+        try {
+          const userDoc = await getDoc(doc(db, 'users', chat.otherId));
+          if (active) {
+            if (userDoc.exists()) {
+              setOtherUser(userDoc.data() as UserProfile);
+            } else {
+              setOtherUser({
+                uid: chat.otherId,
+                customId: 'ET-User',
+                displayName: 'EasyTravel User',
+                email: '',
+                role: 'passenger',
+                createdAt: null
+              } as any);
+            }
+          }
+        } catch (e) {
+          console.error("Error fetching user details in ChatListItem:", e);
+          if (active) {
+            setOtherUser({
+              uid: chat.otherId,
+              customId: 'ET-User',
+              displayName: 'EasyTravel User',
+              email: '',
+              role: 'passenger',
+              createdAt: null
+            } as any);
+          }
+        }
       }
       if (chat.rideId) {
-        const rideDoc = await getDoc(doc(db, 'rides', chat.rideId));
-        if (rideDoc.exists()) {
-           setRide({ id: rideDoc.id, ...rideDoc.data() });
-        } else {
-           const reqDoc = await getDoc(doc(db, 'rideRequests', chat.rideId));
-           if (reqDoc.exists()) setRide({ id: reqDoc.id, ...reqDoc.data() });
+        try {
+          const rideDoc = await getDoc(doc(db, 'rides', chat.rideId));
+          if (active) {
+            if (rideDoc.exists()) {
+              setRide({ id: rideDoc.id, ...rideDoc.data() });
+            } else {
+              const reqDoc = await getDoc(doc(db, 'rideRequests', chat.rideId));
+              if (active) {
+                if (reqDoc.exists()) {
+                  setRide({ id: reqDoc.id, ...reqDoc.data() });
+                } else {
+                  // Check if it is a booking ID of a matched ride
+                  const bookingDoc = await getDoc(doc(db, 'bookings', chat.rideId));
+                  if (active && bookingDoc.exists()) {
+                    setRide({ id: bookingDoc.id, ...bookingDoc.data() });
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error fetching ride details in ChatListItem:", e);
         }
       }
     };
     fetchDetails();
+    return () => {
+      active = false;
+    };
   }, [chat]);
 
   return (
@@ -3481,13 +3635,35 @@ function ChatListItem({ chat, user, setView }: { chat: any, user: User | null, s
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-baseline mb-1">
-            <h4 className="font-bold text-slate-900 truncate">{otherUser?.displayName || 'Loading...'}</h4>
-            <span className="text-[10px] text-slate-400 font-medium">
-              {chat.lastMessage.timestamp?.toDate ? format(chat.lastMessage.timestamp.toDate(), 'HH:mm') : ''}
-            </span>
+          <div className="flex justify-between items-start mb-1">
+            <h4 className="font-bold text-slate-900 truncate pr-2">{otherUser?.displayName || 'Loading...'}</h4>
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <span className="text-[10px] text-slate-400 font-medium">
+                {chat.lastMessage.timestamp?.toDate ? format(chat.lastMessage.timestamp.toDate(), 'HH:mm') : ''}
+              </span>
+              {chat.unreadCount > 0 && (
+                <span className="flex items-center justify-center bg-blue-600 text-white font-bold text-[10px] h-4 min-w-4 px-1 rounded-full animate-in zoom-in-50 duration-200">
+                  {chat.unreadCount}
+                </span>
+              )}
+            </div>
           </div>
-          <p className="text-sm text-slate-500 truncate mb-2">{chat.lastMessage.text}</p>
+          <p className="text-sm text-slate-500 truncate mb-2 flex items-center">
+            {chat.lastMessage.senderId === user?.uid && (
+              <span className="inline-flex mr-1 shrink-0">
+                {chat.lastMessage.status === 'read' ? (
+                  <CheckCheck className="w-3.5 h-3.5 text-sky-500 font-bold" />
+                ) : chat.lastMessage.status === 'delivered' ? (
+                  <CheckCheck className="w-3.5 h-3.5 text-slate-400" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 text-slate-400" />
+                )}
+              </span>
+            )}
+            <span className={`truncate ${chat.unreadCount > 0 ? 'text-slate-900 font-semibold' : ''}`}>
+              {chat.lastMessage.text}
+            </span>
+          </p>
           {ride && (
             <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 rounded-full">
               <Car className="w-3 h-3 text-blue-500" />
