@@ -191,6 +191,7 @@ service cloud.firestore {
       allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || 
                      isAdmin() ||
                      (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['easyCoins']));
+      allow delete: if isAdmin() || isOwner(userId);
     }
 
     match /rides/{rideId} {
