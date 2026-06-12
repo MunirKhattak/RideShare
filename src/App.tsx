@@ -70,7 +70,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import confetti from 'canvas-confetti';
-import InstallGuideModal from './components/InstallGuideModal';
 
 const trackInteraction = async (rideId: string, type: 'call' | 'whatsapp' | 'chat', collectionName: 'rides' | 'rideRequests') => {
   try {
@@ -94,7 +93,6 @@ export default function App() {
   const [activeWarning, setActiveWarning] = useState<Warning | null>(null);
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [rewardTask, setRewardTask] = useState<any>(null);
   const [bookingTask, setBookingTask] = useState<any>(null);
   const [activeBookings, setActiveBookings] = useState<Booking[]>([]);
@@ -606,8 +604,6 @@ export default function App() {
           setDeferredPrompt(null);
         }
       });
-    } else {
-      setShowInstallGuide(true);
     }
   };
 
@@ -1209,7 +1205,7 @@ export default function App() {
         </motion.div>
       )}
 
-      <Header user={user} setView={setView} onSignInClick={() => setShowSignInModal(true)} onInstall={handleInstall} />
+      <Header user={user} setView={setView} onSignInClick={() => setShowSignInModal(true)} onInstall={deferredPrompt ? handleInstall : undefined} />
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-8">
         <AnimatePresence mode="wait">
           <motion.div
@@ -1294,12 +1290,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* PWA Install Guide Modal */}
-      <AnimatePresence>
-        {showInstallGuide && (
-          <InstallGuideModal isOpen={showInstallGuide} onClose={() => setShowInstallGuide(false)} />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
