@@ -86,6 +86,10 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint' | 'privacy_policy'>('main');
+  const viewRef = useRef(view);
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
   const [activeWarning, setActiveWarning] = useState<Warning | null>(null);
   const [activeComplaintReply, setActiveComplaintReply] = useState<Complaint | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -657,24 +661,53 @@ export default function App() {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
-  // Auth Listener
+  // Auth & Profile Listener
   useEffect(() => {
+    let unsubProfile: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       try {
         setUser(currentUser);
+        if (unsubProfile) {
+          unsubProfile();
+          unsubProfile = null;
+        }
+
         if (currentUser) {
           registerFCMToken(currentUser);
-          const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-          if (userDoc.exists()) {
-            const p = userDoc.data() as UserProfile;
-            setProfile(p);
-          }
+          
+          // Listen to the user profile in real-time to detect deletion by administrator instantly
+          unsubProfile = onSnapshot(doc(db, 'users', currentUser.uid), (snapshot) => {
+            if (snapshot.exists()) {
+              const p = snapshot.data() as UserProfile;
+              setProfile(p);
+            } else {
+              // Profile doc does not exist in Firestore!
+              setProfile(null);
+              
+              // If the user's profile is deleted by an admin, we clear their Auth session.
+              // We only do this if they are not currently in the registration view.
+              if (viewRef.current !== 'register') {
+                logout().then(() => {
+                  toast.error("Aap ka account admin ne remove kar diya hai. Please dobara Register karein.");
+                  setView('main');
+                }).catch((err) => {
+                  console.error("Logout error on database deletion:", err);
+                });
+              }
+            }
+            setLoading(false);
+          }, (error) => {
+            console.error("Profile real-time listener error:", error);
+            handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
+            setLoading(false);
+          });
         } else {
           setProfile(null);
+          setLoading(false);
         }
       } catch (error) {
         console.error("Auth listener error:", error);
-      } finally {
         setLoading(false);
       }
     });
@@ -686,6 +719,7 @@ export default function App() {
 
     return () => {
       unsubscribe();
+      if (unsubProfile) unsubProfile();
       clearTimeout(timeout);
     };
   }, []);
