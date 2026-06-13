@@ -64,7 +64,11 @@ import {
   PlayCircle,
   WifiOff,
   Smartphone,
-  Download
+  Download,
+  Lock,
+  Shield,
+  Mail,
+  FileText
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1938,37 +1942,32 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any, it
 
 function PrivacyPolicy({ setView }: { setView: (v: any) => void }) {
   return (
-    <div className="space-y-6 py-6 pb-20">
+    <div className="space-y-6 py-6 pb-20 max-w-3xl mx-auto">
       <div className="flex items-center gap-3 mb-4">
-        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setView('main')}>
-          <ArrowLeft className="w-6 h-6" />
+        <Button variant="ghost" size="icon" className="rounded-full shrink-0" onClick={() => setView('main')}>
+          <ArrowLeft className="w-5 h-5 text-slate-700" />
         </Button>
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight text-center flex-1">Privacy Policy</h2>
+        <div className="flex flex-col flex-1">
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Privacy Policy</h2>
+          <p className="text-slate-500 text-xs mt-0.5">Last Updated: June 13, 2026 • Version 2.2.0</p>
+        </div>
       </div>
 
-      <Card className="border-none shadow-xl rounded-[2.5rem] overflow-hidden bg-white/70 backdrop-blur-md">
-        <CardContent className="p-8 space-y-6">
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <h3 className="text-xl font-bold text-blue-600">Humari Zimedaari</h3>
-            </div>
-            <p className="text-slate-600 text-sm md:text-base leading-relaxed font-outfit">
-              EasyTravel aapki privacy ka mukammal ehtiram karti hai. Hum aapka data sirf behtar user experience aur safety ke liye istemal karte hain. Hamara maqsad apke elaaqay mein travel ko safe aur sasta banana hai.
-            </p>
-          </section>
+      <Card className="border-none shadow-xl rounded-[2.5rem] overflow-hidden bg-white">
+        <CardContent className="p-6 md:p-8 space-y-6">
+          <p className="text-slate-600 text-sm md:text-base leading-relaxed font-outfit text-justify">
+            Welcome to EasyTravel. We are dedicated to respecting and protecting your privacy under strict confidentiality rules. When you use our application to match, list, or coordinate travels, we collect minimal necessary identity markers such as your name, email, profile picture, travel roles, contact numbers, and device indicators including Firebase Cloud Messaging (FCM) tokens that are processed solely for immediate system notifications about rides or messages. To facilitate coordination, your verified phone and WhatsApp contact coordinates are matched exclusively and shared with your confirmed car owners or passengers without being visible to general external guests. We commit that we never sell, lease, rent, or trade your personal information or contact directory to external marketing networks. To protect user autonomy, we support absolute immediate permanent purging; executing profile deletion instantly and permanently removes all your data from our active Google Firestore databases. While we carry out general moderation and handle safety complaints, users operate as part of a peer marketplace and should always cross-match coordinates, inspect licenses, share active routes with trusted relatives, and report any uncomfortable interactions via our forms.
+          </p>
 
           <div className="pt-6">
-            <Button className="w-full bg-blue-600 hover:bg-blue-700 h-14 rounded-2xl font-black text-lg gap-2 shadow-lg shadow-blue-100 active:scale-95 transition-all" onClick={() => setView('main')}>
-              <Check className="w-6 h-6" /> Samajh Gaya
+            <Button className="w-full bg-blue-600 hover:bg-blue-700 h-14 rounded-2xl font-black text-lg gap-2 shadow-lg shadow-blue-100 active:scale-95 transition-all text-white" onClick={() => setView('main')}>
+              <Check className="w-6 h-6" /> Wapis Jayen
             </Button>
           </div>
         </CardContent>
       </Card>
       
-      <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">Version 2.1.0 • Updated: 1 May 2026</p>
+      <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">EasyTravel Safety Program • Compliance Department</p>
     </div>
   );
 }
