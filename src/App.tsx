@@ -196,10 +196,15 @@ export default function App() {
       const fcmToken = await getToken(messaging, { vapidKey });
       if (fcmToken) {
         const userRef = doc(db, 'users', currentUser.uid);
-        await updateDoc(userRef, {
-          fcmTokens: arrayUnion(fcmToken)
-        });
-        console.log("Background FCM Token saved successfully to Firestore.");
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          await updateDoc(userRef, {
+            fcmTokens: arrayUnion(fcmToken)
+          });
+          console.log("Background FCM Token saved successfully to Firestore.");
+        } else {
+          console.log("FCM registration bypassed: User profile document does not exist.");
+        }
       }
     } catch (err) {
       console.warn("Background FCM setup: Dynamic check run completed safely:", err);
@@ -4159,7 +4164,8 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
         await deleteDoc(doc(db, 'users', uid));
         toast.success('Account delete ho gaya!');
       } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `users/${uid}`);
+        console.error("Delete account error:", error);
+        toast.error(`Account delete karne mein masla hua: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   };
