@@ -337,11 +337,32 @@ export default function App() {
           const diffMins = diffMs / (1000 * 60);
           const diffHours = diffMins / 60;
 
-          const myStatus = ride.rewardStatus?.[user.uid];
+          const isDriver = user.uid === ride.driverId;
+          const statuses = Object.values(ride.rewardStatus || {}) as any[];
+          
+          let startTimeConfirmed = false;
+          let alreadyConfirmedComplete = false;
+
+          if (isDriver) {
+            if (statuses.length > 0) {
+              startTimeConfirmed = statuses.every(s => s.startTimeConfirmed);
+              alreadyConfirmedComplete = statuses.every(s => s.driverConfirmed);
+            } else {
+              startTimeConfirmed = true;
+              alreadyConfirmedComplete = true;
+            }
+          } else {
+            const status = ride.rewardStatus?.[user.uid];
+            if (!status) return;
+
+            startTimeConfirmed = !!status.startTimeConfirmed;
+            alreadyConfirmedComplete = !!status.passengerConfirmed;
+          }
+
           const rideKey = `${doc.id}-${user.uid}`;
 
           // 30 Minute AFTER Start Reminder (Window widened to 2 hours for reliability)
-          if (diffMins > 29 && diffMins < 120 && !myStatus?.startTimeConfirmed) {
+          if (diffMins > 29 && diffMins < 120 && !startTimeConfirmed) {
             const lastTime = lastNotificationRef.current[`${rideKey}-start`];
             if (!lastTime || (now - lastTime > 15 * 60 * 1000)) { // 15 mins throttle
               showNotification("Kia ap ne Safar shuru kr lya?", {
@@ -354,7 +375,7 @@ export default function App() {
           }
 
           // 5 Hour AFTER Start Reminder
-          if (diffHours > 4.9 && diffHours < 12 && (!myStatus?.driverConfirmed && !myStatus?.passengerConfirmed)) {
+          if (diffHours > 4.9 && diffHours < 12 && !alreadyConfirmedComplete) {
             const lastTime = lastNotificationRef.current[`${rideKey}-complete`];
             if (!lastTime || (now - lastTime > 15 * 60 * 1000)) { // 15 mins throttle
               showNotification("Kia apka safar mukamal hua?", {
@@ -535,7 +556,8 @@ export default function App() {
           }
 
           // 3. 5 Hours Safety Net (Auto-prompt if not completed)
-          if (diffMins >= 300 && !status.driverConfirmed && !status.passengerConfirmed) {
+          const needsConfirmation = isDriver ? !status.driverConfirmed : !status.passengerConfirmed;
+          if (diffMins >= 300 && needsConfirmation) {
              // Prompt both to complete
              setRewardTask(prev => prev?.ride?.id === ride.id && prev?.type === 'complete' ? prev : {
                ride,
