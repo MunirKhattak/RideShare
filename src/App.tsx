@@ -1209,8 +1209,8 @@ export default function App() {
 
   if (loading || splashLoading) return <LoadingSpinner />;
 
-  // Enforce startup Launch Screen & Profile Registration Completion
-  if (!user || !profile) {
+  // Enforce startup Launch Screen & Profile Registration Completion (allow privacy policy without login)
+  if (view !== 'privacy_policy' && (!user || !profile)) {
     return (
       <LaunchSignInScreen 
         user={user} 
@@ -1309,7 +1309,7 @@ export default function App() {
 
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-8">
         <AnimatePresence mode="wait">
-          {travelScope === null ? (
+          {travelScope === null && view !== 'privacy_policy' && view !== 'complaint' ? (
             <motion.div
               key="scope-selector"
               initial={{ opacity: 0, y: 15 }}
