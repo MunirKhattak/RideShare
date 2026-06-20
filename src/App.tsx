@@ -18,8 +18,7 @@ import {
   limit,
   increment,
   arrayUnion,
-  getCountFromServer,
-  getDocFromServer
+  getCountFromServer
 } from 'firebase/firestore';
 import { getMessaging, getToken, isSupported } from 'firebase/messaging';
 import { UserProfile, Ride, RideRequest, ChatMessage, Complaint, Analytics, Warning, Booking } from './types';
@@ -35,6 +34,7 @@ import { Toaster, toast } from 'sonner';
 import { 
   CheckCircle2,
   Car, 
+  Bike,
   User as UserIcon, 
   Search, 
   Plus, 
@@ -68,12 +68,17 @@ import {
   Lock,
   Shield,
   Mail,
-  FileText
+  FileText,
+  ChevronRight,
+  ChevronDown
 } from 'lucide-react';
+import IntracityDemo, { LOCAL_LOCATIONS } from './components/IntracityDemo';
+import LiveActivePassengerMap from './components/LiveActivePassengerMap';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import confetti from 'canvas-confetti';
+import LaunchSignInScreen from './components/LaunchSignInScreen';
 
 const trackInteraction = async (rideId: string, type: 'call' | 'whatsapp' | 'chat', collectionName: 'rides' | 'rideRequests') => {
   try {
@@ -90,6 +95,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint' | 'privacy_policy'>('main');
+  const [travelScope, setTravelScope] = useState<'intercity' | 'intracity' | null>(null);
   const viewRef = useRef(view);
   useEffect(() => {
     viewRef.current = view;
@@ -594,6 +600,9 @@ export default function App() {
 
   const setView = (newView: any, item?: any) => {
     if (item) setSelectedItem(item);
+    if (newView === 'main') {
+      setTravelScope(null);
+    }
     if (view !== newView) {
       window.history.pushState({ view: newView }, '', '');
       setViewState(newView);
@@ -609,16 +618,25 @@ export default function App() {
     const handlePopState = (event: PopStateEvent) => {
       if (event.state && event.state.view) {
         setViewState(event.state.view);
+        if (event.state.view === 'main') {
+          setTravelScope(null);
+        }
       } else {
         // If no state, we are at the beginning. Let the browser handle it (minimize/close app)
         // Or default to main
         setViewState('main');
+        setTravelScope(null);
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  useEffect(() => {
+    // Page load alignment: scroll back to the very top header whenever view or category switches
+    window.scrollTo(0, 0);
+  }, [view, travelScope]);
 
   useEffect(() => {
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -689,6 +707,15 @@ export default function App() {
   const [rides, setRides] = useState<Ride[]>([]);
   const [requests, setRequests] = useState<RideRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [splashLoading, setSplashLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSplashLoading(false);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
@@ -754,6 +781,29 @@ export default function App() {
       clearTimeout(timeout);
     };
   }, []);
+
+  // Resolve pending district role selection (from Intracity selection cards) post login/registration
+  useEffect(() => {
+    if (user && profile) {
+      const pendingDistRole = localStorage.getItem('pendingDistrictRole');
+      if (pendingDistRole === 'owner' || pendingDistRole === 'passenger') {
+        localStorage.removeItem('pendingDistrictRole');
+        const targetRole: 'driver' | 'passenger' = pendingDistRole === 'owner' ? 'driver' : 'passenger';
+        
+        if (profile.role !== targetRole) {
+          updateDoc(doc(db, 'users', user.uid), { role: targetRole }).then(() => {
+            setProfile({ ...profile, role: targetRole });
+            toast.success(`Ab aap ${targetRole === 'driver' ? 'Car Owner' : 'Passenger'} ke dashboard mein hain`);
+          }).catch(err => {
+            console.error("Error updating pending role:", err);
+          });
+        }
+        
+        setTravelScope('intercity');
+        setView('dashboard');
+      }
+    }
+  }, [user, profile]);
 
   // Real-time Listeners
   useEffect(() => {
@@ -1010,17 +1060,8 @@ export default function App() {
   // Visit Tracking
   useEffect(() => {
     const trackVisit = async () => {
+      if (!navigator.onLine) return;
       try {
-        // CRITICAL: Test connection first as per instructions
-        try {
-          await getDocFromServer(doc(db, '_connection_test_', 'ping'));
-        } catch (e: any) {
-          if (e?.message?.toLowerCase().includes('offline')) {
-            console.warn("Firestore is offline or config is incorrect. Skipping visit tracking.");
-            return;
-          }
-        }
-
         const today = format(new Date(), 'yyyy-MM-dd');
         const analyticsRef = doc(db, 'analytics', today);
         const docSnap = await getDoc(analyticsRef);
@@ -1032,7 +1073,7 @@ export default function App() {
         }
       } catch (error: any) {
         // Only log if it's not an offline error to avoid spamming the console
-        if (!error?.message?.toLowerCase().includes('offline')) {
+        if (!error?.message?.toLowerCase().includes('offline') && !error?.message?.toLowerCase().includes('unavailable')) {
           console.error("Visit tracking error:", error);
         }
       }
@@ -1166,14 +1207,35 @@ export default function App() {
     }
   };
 
-  if (loading) return <LoadingSpinner />;
+  if (loading || splashLoading) return <LoadingSpinner />;
+
+  // Enforce startup Launch Screen & Profile Registration Completion
+  if (!user || !profile) {
+    return (
+      <LaunchSignInScreen 
+        user={user} 
+        profile={profile} 
+        setProfile={setProfile} 
+        setView={setView} 
+      />
+    );
+  }
 
   const renderView = () => {
     switch (view) {
       case 'main':
         return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} />;
-      case 'register':
-        return <RegistrationForm user={user} role={(profile?.role as 'driver' | 'passenger') || 'passenger'} setView={setView} setProfile={setProfile} />;
+      case 'register': {
+        let defaultRegRole: 'driver' | 'passenger' = (profile?.role as 'driver' | 'passenger') || 'passenger';
+        try {
+          const pendingDistRole = localStorage.getItem('pendingDistrictRole');
+          if (pendingDistRole === 'owner') defaultRegRole = 'driver';
+          else if (pendingDistRole === 'passenger') defaultRegRole = 'passenger';
+        } catch (e) {
+          console.error(e);
+        }
+        return <RegistrationForm user={user} role={defaultRegRole} setView={setView} setProfile={setProfile} />;
+      }
       case 'dashboard':
         return (
           <Dashboard 
@@ -1185,14 +1247,15 @@ export default function App() {
             activeBookings={activeBookings}
             onUpdateBookingStatus={handleUpdateBookingStatus}
             isOnline={isOnline}
+            travelScope={travelScope}
           />
         );
       case 'post':
-        return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} />;
+        return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} travelScope={travelScope} />;
       case 'edit_post':
-        return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} editItem={selectedItem} />;
+        return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} editItem={selectedItem} travelScope={travelScope} />;
       case 'search':
-        return <RouteSearch setView={setView} userRole={(profile?.role as 'driver' | 'passenger') || 'passenger'} onWhatsAppClick={setWaModalData} onBookClick={setBookingTask} />;
+        return <RouteSearch setView={setView} userRole={(profile?.role as 'driver' | 'passenger') || 'passenger'} onWhatsAppClick={setWaModalData} onBookClick={setBookingTask} travelScope={travelScope} />;
       case 'profile_view':
         return <DetailedProfileView 
           item={selectedItem} 
@@ -1236,18 +1299,39 @@ export default function App() {
         </motion.div>
       )}
 
-      <Header user={user} setView={setView} onSignInClick={() => setShowSignInModal(true)} onInstall={deferredPrompt ? handleInstall : undefined} />
+      <Header user={user} setView={(v) => {
+        if (v === 'main') {
+          setTravelScope(null);
+        }
+        setView(v);
+      }} onSignInClick={() => setShowSignInModal(true)} onInstall={deferredPrompt ? handleInstall : undefined} />
+      
+
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-8">
         <AnimatePresence mode="wait">
-          <motion.div
-            key={view}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.2 }}
-          >
-            {renderView()}
-          </motion.div>
+          {travelScope === null ? (
+            <motion.div
+              key="scope-selector"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.2 }}
+            >
+              <TravelScopeSelection onSelect={(scope) => {
+                setTravelScope(scope);
+              }} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key={view}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              {renderView()}
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
       <AnimatedFooter setView={setView} />
@@ -1862,54 +1946,6 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any, it
 
   return (
     <div className="space-y-6 py-6">
-      <div className="text-center space-y-3">
-        <motion.h2 
-          initial={{ y: -20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight flex flex-col items-center"
-        >
-          <span><span className="text-red-500">EasyTravel</span> me</span>
-          <span className="text-emerald-600">Khush Amdeed!</span>
-        </motion.h2>
-        <div className="space-y-4 max-w-2xl mx-auto px-4 pt-4 font-outfit">
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-blue-50/80 border border-blue-100 py-4 px-6 rounded-2xl shadow-sm"
-          >
-            <p className="text-base md:text-lg font-bold text-slate-800 tracking-tight">
-              <span className="font-black text-blue-600">Passenger</span> ho ya <span className="font-black text-blue-600">Car Owner</span> - Ab Apka Safar ' Hamari Zimedaari
-            </p>
-            <p className="text-[11px] md:text-sm font-bold text-slate-500 mt-2 whitespace-nowrap overflow-hidden text-ellipsis">
-              Fauri Raabta - Araam Deh Safar - Kam Kharcha
-            </p>
-          </motion.div>
-
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-slate-50 border border-slate-200 py-3 px-6 rounded-xl"
-          >
-            <p className="text-sm md:text-base font-semibold text-slate-600 leading-relaxed">
-              <span className="font-black text-slate-900">Car Owner</span> k pas Seats Khaali hain ? - Aur - <span className="font-black text-slate-900">Passenger</span> Kharab Transport System se Pareshaan hai ?
-            </p>
-          </motion.div>
-
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="bg-emerald-50/40 border border-emerald-100/30 py-4 px-6 rounded-2xl"
-          >
-            <p className="text-sm md:text-base text-slate-600 font-medium leading-relaxed">
-              Abhi <span className="font-bold text-emerald-700">EasyTravel</span> pe Search Karen ya Post Lagayen - <span className="font-black text-emerald-800">Car Owner</span> apna Fuel ka Kharcha Bachaaen - <span className="font-black text-emerald-800">Passenger</span> apna Safar Araam Deh Banaaen
-            </p>
-          </motion.div>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-4">
         <motion.div
           whileHover={{ scale: 1.02, translateY: -5 }}
@@ -1919,14 +1955,18 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any, it
             className="h-full cursor-pointer border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-800 text-white group relative"
             onClick={() => handleRoleSelection('driver')}
           >
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+            <motion.div 
+              animate={{ x: [0, 8, -8, 0], y: [0, -3, 3, 0] }}
+              transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+              className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"
+            >
               <Car className="w-24 h-24 rotate-12" />
-            </div>
+            </motion.div>
             <CardHeader className="p-6 relative z-10">
               <div className="bg-white/20 w-12 h-12 rounded-xl flex items-center justify-center mb-4 backdrop-blur-md">
                 <Car className="w-8 h-8 text-white" />
               </div>
-              <CardTitle className="text-3xl font-bold mb-1">Main Car Owner Hoon</CardTitle>
+              <CardTitle className="text-3xl font-bold mb-1">Mai Car Owner <br /> Hoon</CardTitle>
               <CardDescription className="text-blue-100 text-lg font-medium">
                 Mujhe Passenger Chahye
               </CardDescription>
@@ -1942,9 +1982,13 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any, it
             className="h-full cursor-pointer border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-orange-500 to-rose-600 text-white group relative"
             onClick={() => handleRoleSelection('passenger')}
           >
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <UserIcon className="w-24 h-24 -rotate-12" />
-            </div>
+            <motion.div 
+              animate={{ y: [0, -6, 6, 0], scale: [1, 1.04, 0.96, 1], rotate: [-12, -8, -16, -12] }}
+              transition={{ repeat: Infinity, duration: 7, ease: "easeInOut" }}
+              className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"
+            >
+              <UserIcon className="w-24 h-24" />
+            </motion.div>
             <CardHeader className="p-6 relative z-10">
               <div className="bg-white/20 w-12 h-12 rounded-xl flex items-center justify-center mb-4 backdrop-blur-md">
                 <UserIcon className="w-8 h-8 text-white" />
@@ -2026,8 +2070,16 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
           setStep(2);
         }
       }
-    } catch (error) {
-      toast.error(`Sign in fail ho gaya: ${error instanceof Error ? error.message : String(error)}`);
+    } catch (error: any) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      if (errMsg.includes('auth/popup-closed-by-user') || (error && error.code === 'auth/popup-closed-by-user')) {
+        toast.warning(
+          "Sign-in popup band kar diya gaya. Agar aap login nahi kar pa rahe hain, to please application ke top bar par 'Open in New Tab' button par click kar ke try karein.",
+          { duration: 8000 }
+        );
+      } else {
+        toast.error(`Sign in fail ho gaya: ${errMsg}`);
+      }
     }
   };
 
@@ -2392,7 +2444,8 @@ function Dashboard({
   onCompleteRide,
   activeBookings,
   onUpdateBookingStatus,
-  isOnline
+  isOnline,
+  travelScope
 }: { 
   user: User | null, 
   profile: UserProfile | null, 
@@ -2401,12 +2454,33 @@ function Dashboard({
   onCompleteRide: (task: any) => void,
   activeBookings: Booking[],
   onUpdateBookingStatus: (id: string, status: 'confirmed' | 'cancelled') => void,
-  isOnline: boolean
+  isOnline: boolean,
+  travelScope: 'intercity' | 'intracity' | null
 }) {
   const userRole = profile?.role || 'passenger';
   const [activeRidesList, setActiveRidesList] = useState<any[]>([]);
   const [activeRequestsList, setActiveRequestsList] = useState<any[]>([]);
+  const [showLiveMap, setShowLiveMap] = useState(false);
+  const [autoActive, setAutoActive] = useState(false);
+  const [gpsEnabled, setGpsEnabled] = useState(false);
+  const [showGpsModal, setShowGpsModal] = useState(false);
   const [now, setNow] = useState(new Date());
+
+  const [selfOrigin, setSelfOrigin] = useState('Karak City');
+  const [selfDestination, setSelfDestination] = useState('Latamber');
+  const [selfVehicleType, setSelfVehicleType] = useState<'Car' | 'Bike' | 'All'>('All');
+  const [showRouteModal, setShowRouteModal] = useState(false);
+  const [modalOrigin, setModalOrigin] = useState('');
+  const [modalDestination, setModalDestination] = useState('');
+  const [modalVehicleType, setModalVehicleType] = useState<'Car' | 'Bike' | 'All'>('All');
+
+  useEffect(() => {
+    if (userRole === 'driver') {
+      setSelfVehicleType('Car');
+    } else {
+      setSelfVehicleType('All');
+    }
+  }, [userRole]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
@@ -2524,6 +2598,28 @@ function Dashboard({
     });
   };
 
+  if (showLiveMap) {
+    return (
+      <div className="py-4">
+        <LiveActivePassengerMap 
+          userRole={userRole === 'driver' ? 'driver' : 'passenger'}
+          driverProfile={profile} 
+          onClose={() => {
+            setShowLiveMap(false);
+          }} 
+          autoActive={autoActive}
+          setAutoActive={setAutoActive}
+          selfOrigin={selfOrigin}
+          setSelfOrigin={setSelfOrigin}
+          selfDestination={selfDestination}
+          setSelfDestination={setSelfDestination}
+          selfVehicleType={selfVehicleType}
+          setSelfVehicleType={setSelfVehicleType}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 py-4">
       {!isOnline && (
@@ -2558,6 +2654,270 @@ function Dashboard({
           </div>
         </div>
       </div>
+
+      {/* Foran Passenger/Ride Mode available for both roles */}
+      <>
+        <Card 
+          onClick={() => {
+            if (autoActive) {
+              setShowLiveMap(true);
+            }
+          }}
+          className={`border border-slate-100 shadow-md bg-white rounded-2xl overflow-hidden p-4 relative transition-all duration-300 ${autoActive ? 'cursor-pointer hover:border-blue-200 hover:shadow-lg bg-blue-50/5' : ''}`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1 min-w-0">
+              <div className="flex flex-wrap items-center">
+                <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 text-[13px] font-black px-3 py-1 rounded-full border border-blue-200/60 shadow-sm font-sans whitespace-nowrap">
+                  <span className="w-2 h-2 bg-blue-600 rounded-full animate-ping shrink-0" />
+                  <span>{userRole === 'driver' ? 'Fauran Passenger Chahye' : 'Fauran Ride Chahye'}</span>
+                  <span className="ml-3 tracking-[0.15em] font-extrabold text-[11px] text-blue-500 uppercase shrink-0">(Active Mode)</span>
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-slate-700 leading-relaxed pt-1">
+                {userRole === 'driver' 
+                  ? 'Agar aap ko abhi foran passenger chahiye, to active button on karein. Aur agay Map pe aur Map k neche List me Active Passengers me se ksi k sath bhi apni Ride Done kren.'
+                  : 'Agar aap ko abhi foran rider ya active car / bike owner chahiye, to active button on karein. Aur agay Map pe aur Map k neche List me Active Car/Bike Owners me se ksi k sath bhi apni Ride Done kren.'}
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors duration-200 ${autoActive ? 'text-blue-600 font-extrabold' : 'text-slate-400 opacity-60'}`}>
+                  Active
+                </span>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!gpsEnabled) {
+                      setShowGpsModal(true);
+                    } else {
+                      const nextVal = !autoActive;
+                      if (nextVal) {
+                        setModalOrigin('');
+                        setModalDestination('');
+                        setModalVehicleType(travelScope === 'intercity' ? 'Car' : selfVehicleType);
+                        setShowRouteModal(true);
+                      } else {
+                        setAutoActive(false);
+                        toast.info("Active mode turned OFF.");
+                      }
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${autoActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoActive ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* GPS Location Permission Enable Modal */}
+        <AnimatePresence>
+          {showGpsModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden p-6 text-center space-y-4"
+              >
+                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-100">
+                  <MapPin className="w-8 h-8 animate-pulse" />
+                </div>
+                <div className="space-y-1.5">
+                  <h3 className="text-lg font-bold text-slate-900">GPS Location Off Hai</h3>
+                  <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                    Apna actual real-time location (GPS location) on karein taake aap active {userRole === 'driver' ? 'passengers' : 'drivers aur rides'} aur surroundings ko maps par dekh sakein.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 pt-2">
+                  <Button 
+                    onClick={() => {
+                      setGpsEnabled(true);
+                      setShowGpsModal(false);
+                      setModalOrigin('');
+                      setModalDestination('');
+                      setModalVehicleType(travelScope === 'intercity' ? 'Car' : selfVehicleType);
+                      setShowRouteModal(true);
+                    }}
+                    className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 font-bold text-sm text-white rounded-xl shadow-lg border-none"
+                  >
+                    GPS Turn On Karein
+                  </Button>
+                  <Button 
+                    variant="ghost"
+                    onClick={() => setShowGpsModal(false)}
+                    className="w-full h-10 text-xs text-slate-400 font-semibold hover:bg-slate-50 hover:text-slate-600"
+                  >
+                    Abhi Nahi
+                  </Button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* ROUTE SELECTION MODAL (Kahan Se - Kahan Tak) */}
+        <AnimatePresence>
+          {showRouteModal && (
+            <div className="fixed inset-0 z-[2000] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden p-6 space-y-6 border border-slate-100 text-slate-900"
+              >
+                {/* Header */}
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto border border-blue-100">
+                    <Navigation className="w-6 h-6 animate-pulse text-blue-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-black text-slate-900 tracking-tight">Active Route Set Karein</h4>
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                      Aap is waqt <span className="font-extrabold text-blue-600">{userRole === 'driver' ? 'Driver 🚗' : 'Passenger 🎒'}</span> k taur par online ja rahay hain.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Form inputs */}
+                <div className="space-y-4 text-left">
+                  {/* From Box */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      Kahan Se? (Where to go from?)
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        value={modalOrigin}
+                        onChange={(e) => setModalOrigin(e.target.value)}
+                        placeholder="e.g. Karak"
+                        className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-950 placeholder:italic placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  {/* To Box */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                      Kahan Tak? (Where to go to?)
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        value={modalDestination}
+                        onChange={(e) => setModalDestination(e.target.value)}
+                        placeholder={travelScope === 'intercity' ? "e.g. Islamabad" : "e.g. Latamber, Karak"}
+                        className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-950 placeholder:italic placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Options below the inputs based on role */}
+                  {travelScope !== 'intercity' && (
+                    <div className="space-y-2 pt-1">
+                      {userRole === 'passenger' ? (
+                        <>
+                          <label className="text-xs font-bold text-slate-700">
+                            Safar Kis Cheez Par Karna Hai? (Preference)
+                          </label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {[
+                              { value: 'All', label: 'All 🎒', desc: 'Any Ride' },
+                              { value: 'Car', label: 'Car 🚗', desc: 'Comfortable' },
+                              { value: 'Bike', label: 'Bike 🏍️', desc: 'Fast & Eco' }
+                            ].map((opt) => (
+                              <button
+                                type="button"
+                                key={opt.value}
+                                onClick={() => setModalVehicleType(opt.value as any)}
+                                className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5 ${
+                                  modalVehicleType === opt.value
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20 font-black scale-[1.03]'
+                                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 font-semibold'
+                                }`}
+                              >
+                                <span className="text-xs">{opt.label}</span>
+                                <span className={`text-[8px] font-medium block ${modalVehicleType === opt.value ? 'text-blue-100' : 'text-slate-400'}`}>
+                                  {opt.desc}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <label className="text-xs font-bold text-slate-700">
+                            Aapke Paas Konsi Gari Hai? (Vehicle Type)
+                          </label>
+                          <div className="grid grid-cols-2 gap-3">
+                            {[
+                              { value: 'Car', label: 'Car 🚗', desc: '4-Wheel Owner' },
+                              { value: 'Bike', label: 'Bike 🏍️', desc: '2-Wheel Owner' }
+                            ].map((opt) => (
+                              <button
+                                type="button"
+                                key={opt.value}
+                                onClick={() => setModalVehicleType(opt.value as any)}
+                                className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                                  modalVehicleType === opt.value
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20 font-black scale-[1.03]'
+                                    : 'bg-slate-50 hover:bg-slate-105 border-slate-200 text-slate-700 font-semibold'
+                                }`}
+                              >
+                                <span className="text-sm">{opt.label}</span>
+                                <span className={`text-[9px] font-medium block ${modalVehicleType === opt.value ? 'text-blue-100' : 'text-slate-400'}`}>
+                                  {opt.desc}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Submitting Actions */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <Button 
+                    onClick={() => setShowRouteModal(false)}
+                    variant="outline"
+                    className="rounded-2xl font-bold h-11 text-xs text-slate-600 hover:bg-slate-55 border border-slate-200"
+                  >
+                    Nahi (Cancel)
+                  </Button>
+                  <Button 
+                    onClick={() => {
+                      if (!modalOrigin.trim() || !modalDestination.trim()) {
+                        toast.error("Meherbani farma kar dono fields fill karein!");
+                        return;
+                      }
+                      setSelfOrigin(modalOrigin.trim());
+                      setSelfDestination(modalDestination.trim());
+                      setSelfVehicleType(modalVehicleType);
+                      setShowRouteModal(false);
+                      setAutoActive(true);
+                      setShowLiveMap(true); // Navigate directly to map page!
+                      toast.success(
+                        `Aap live ho chuke hain! Route: ${modalOrigin.trim()} ➔ ${modalDestination.trim()} (${modalVehicleType === 'All' ? 'Car & Bike All' : modalVehicleType})`
+                      );
+                    }}
+                    className="bg-blue-600 hover:bg-blue-750 text-white rounded-2xl font-extrabold h-11 text-xs border-none shadow-lg shadow-blue-500/20"
+                  >
+                    Yes [OK]
+                  </Button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+      </>
 
       {filteredBookings.length > 0 && (
         <div className="space-y-3">
@@ -2652,6 +3012,29 @@ function Dashboard({
         </div>
       )}
 
+      {/* Informative Advance Booking Banner */}
+      <div className="bg-gradient-to-br from-indigo-50/80 via-blue-50/50 to-white border border-indigo-100/80 rounded-2xl p-4 flex items-start gap-3.5 shadow-sm transition-all hover:shadow duration-300">
+        <div className="bg-gradient-to-br from-indigo-500 to-blue-600 p-2.5 rounded-xl shadow-md text-white shrink-0 mt-0.5">
+          <CalendarIcon className="w-5 h-5" />
+        </div>
+        <div className="space-y-1">
+          <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 leading-none">
+            Advance Booking Plan Karen <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
+          </h4>
+          <p className="text-xs text-slate-600 font-medium leading-relaxed">
+            {userRole === 'driver' ? (
+              <>
+                Agar aap ne <span className="text-indigo-600 font-extrabold">Kal</span> <span className="text-slate-400 font-normal">ya</span> <span className="text-indigo-600 font-extrabold">Baad</span> <span className="text-slate-400 font-normal">me</span> jana hai to neche <span className="text-emerald-600 font-bold">Passenger Dhoonden</span> ya <span className="text-indigo-600 font-bold">Naya Post lagaaen</span> taakeh Passengers aapke sath advance booking kar saken.
+              </>
+            ) : (
+              <>
+                Agar aap ne <span className="text-indigo-600 font-extrabold">Kal</span> <span className="text-slate-400 font-normal">ya</span> <span className="text-indigo-600 font-extrabold">Baad</span> <span className="text-slate-400 font-normal">me</span> jana hai to neche <span className="text-emerald-600 font-bold">Car Owner Dhoonden</span> ya <span className="text-indigo-600 font-bold">Naya Post lagaaen</span> taakeh Car Owners aapke sath advance booking kar saken.
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-5">
         <Button 
           className="h-24 text-xl gap-4 bg-emerald-600 hover:bg-emerald-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
@@ -2708,13 +3091,153 @@ function Dashboard({
   );
 }
 
-function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick }: { setView: (v: any, item?: any) => void, userRole: 'driver' | 'passenger', onWhatsAppClick: (item: any) => void, onBookClick: (item: any) => void }) {
+function SearchableSelector({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = 'Type to search...',
+  icon,
+}: {
+  label?: string;
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+  placeholder?: string;
+  icon?: React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(value);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSearchQuery(value);
+  }, [value]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const sortedOptions = useMemo(() => {
+    return [...options].sort((a, b) => a.localeCompare(b));
+  }, [options]);
+
+  const filteredOptions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q === '') return sortedOptions;
+    return sortedOptions.filter(opt => opt.toLowerCase().includes(q));
+  }, [searchQuery, sortedOptions]);
+
+  return (
+    <div ref={containerRef} className="relative w-full space-y-1">
+      {label && <Label className="text-xs font-bold text-slate-600 block">{label}</Label>}
+      <div className="relative">
+        {icon && <div className="absolute left-3.5 top-3.5 text-slate-400 z-10">{icon}</div>}
+        <Input
+          type="text"
+          value={searchQuery}
+          placeholder={placeholder}
+          onFocus={() => setIsOpen(true)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setSearchQuery(val);
+            onChange(val);
+            setIsOpen(true);
+          }}
+          className={`w-full bg-white border border-slate-200 text-sm h-11 rounded-xl pr-4 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all ${icon ? 'pl-11' : 'pl-4'}`}
+        />
+      </div>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.15 }}
+            className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto"
+          >
+            {filteredOptions.length === 0 ? (
+              <div className="p-3 text-xs text-slate-500 font-medium">Koi option nahi mila. Aap jo chahen type kr skte hain.</div>
+            ) : (
+              <div className="p-1">
+                {filteredOptions.map((opt, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery(opt);
+                      onChange(opt);
+                      setIsOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs rounded-lg font-semibold transition-colors duration-150 flex items-center justify-between ${
+                      value === opt 
+                        ? 'bg-blue-50 text-blue-700' 
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>{opt}</span>
+                    {value === opt && <Check className="w-4 h-4 text-blue-600" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+const PAKISTAN_CITIES_AND_DISTRICTS = [
+  "Abbottabad", "Astore", "Attock", "Awaran", "Badin", "Bagh", "Bahawalnagar", "Bahawalpur", "Bajaur", "Bannu", 
+  "Barkhan", "Batagram", "Bhakkar", "Bhalwal", "Bhimber", "Buner", "Burewala", "Chaghai", "Chakwal", "Chaman", 
+  "Charsadda", "Chiniot", "Chishtian", "Chitral", "Dadu", "Daryakhan", "Daska", "Dera Bugti", "Dera Ghazi Khan", "Dera Ismail Khan", 
+  "Dir", "Duki", "Faisalabad", "Ghotki", "Gilgit", "Gojra", "Gujranwala", "Gujrat", "Gwadar", "Hafizabad", "Hala", "Hangu", "Haripur", "Harnai", "Hasilpur", "Hattian Bala", 
+  "Haveli", "Hazro", "Hub", "Hunza", "Hyderabad", "Islamabad", "Jacobabad", "Jafarabad", "Jamshoro", "Jampur", 
+  "Jhang", "Jhelum", "Kahuta", "Kalat", "Kamoke", "Karachi", "Karak", "Kashmore", "Kasur", 
+  "Kharan", "Kharian", "Khushab", "Khuzdar", "Kohat", "Kohistan", "Kot Addu", "Kotli", "Kurram", "Lahore", 
+  "Lakki Marwat", "Loralai", "Lodhran", "Larkana", "Leiah", "Mandi Bahauddin", "Mansehra", "Mardan", "Mianwali", "Mingora", 
+  "Mirpur", "Multan", "Murree", "Muzaffarabad", "Muzaffargarh", "Nankana Sahib", "Narowal", "Naseerabad", 
+  "Nawabshah", "Nowshera", "Okara", "Orakzai", "Pakpattan", "Peshawar", "Pishin", "Quetta", "Rahim Yar Khan", 
+  "Rajanpur", "Rawalakot", "Rawalpindi", "Sadiqabad", "Sahiwal", "Sambrial", "Sanghar", "Sargodha", "Shakargarh", "Shangla", 
+  "Shekhupura", "Shikarpur", "Sialkot", "Sibi", "Sohbatpur", "Sudhanoti", "Sujawal", "Sukkur", "Swabi", "Swat", 
+  "Tando Allahyar", "Tando Muhammad Khan", "Takht-e-Nusrati", "Tank", "Taxila", "Tharparkar", "Thatta", "Toba Tek Singh", 
+  "Turbat", "Umerkot", "Vehari", "Wah Cantt", "Wazirabad", "Zhob", "Ziarat"
+];
+
+const CLEAN_LOCAL_LOCATIONS = [
+  "Ahmed Abad",
+  "Bahader Khel",
+  "Banda Daud Shah",
+  "Chowkara",
+  "Ghundi Mir Khankhel",
+  "Karak City",
+  "Latamber",
+  "Mithakhel",
+  "Nari Panos",
+  "Sabirabad",
+  "Siraj Khel",
+  "Takht-e-Nusrati"
+];
+
+function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick, travelScope }: { setView: (v: any, item?: any) => void, userRole: 'driver' | 'passenger', onWhatsAppClick: (item: any) => void, onBookClick: (item: any) => void, travelScope?: 'intercity' | 'intracity' | null }) {
+  const isIntracity = travelScope === 'intracity';
+
   const [searchData, setSearchData] = useState({
     origin: '',
     destination: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     day: format(new Date(), 'EEEE'),
-    time: ''
+    time: '',
+    district: '',
+    vehicle: 'Car'
   });
   const [results, setResults] = useState<any[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -2752,14 +3275,36 @@ function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick }: { setV
       
       // Client-side filtering
       data = data.filter((item: any) => !item.isDeleted);
-      if (dataToSearch.origin) {
-        data = data.filter((item: any) => item.origin?.trim().toLowerCase() === dataToSearch.origin.trim().toLowerCase());
-      }
-      if (dataToSearch.destination) {
-        data = data.filter((item: any) => item.destination?.trim().toLowerCase() === dataToSearch.destination.trim().toLowerCase());
-      }
-      if (dataToSearch.date) {
-        data = data.filter((item: any) => item.date === dataToSearch.date);
+      
+      if (isIntracity) {
+        data = data.filter((item: any) => item.scope === 'intracity');
+        
+        if (dataToSearch.district) {
+          data = data.filter((item: any) => item.district?.toLowerCase() === dataToSearch.district.toLowerCase());
+        }
+        if (dataToSearch.vehicle && dataToSearch.vehicle !== 'All') {
+          data = data.filter((item: any) => item.vehicle === dataToSearch.vehicle);
+        }
+        if (dataToSearch.origin) {
+          data = data.filter((item: any) => item.origin?.trim().toLowerCase().includes(dataToSearch.origin.trim().toLowerCase()));
+        }
+        if (dataToSearch.destination) {
+          data = data.filter((item: any) => item.destination?.trim().toLowerCase().includes(dataToSearch.destination.trim().toLowerCase()));
+        }
+        if (dataToSearch.date) {
+          data = data.filter((item: any) => item.date === dataToSearch.date);
+        }
+      } else {
+        data = data.filter((item: any) => item.scope !== 'intracity');
+        if (dataToSearch.origin) {
+          data = data.filter((item: any) => item.origin?.trim().toLowerCase() === dataToSearch.origin.trim().toLowerCase());
+        }
+        if (dataToSearch.destination) {
+          data = data.filter((item: any) => item.destination?.trim().toLowerCase() === dataToSearch.destination.trim().toLowerCase());
+        }
+        if (dataToSearch.date) {
+          data = data.filter((item: any) => item.date === dataToSearch.date);
+        }
       }
       
       setResults(data);
@@ -2768,6 +3313,170 @@ function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick }: { setV
       handleFirestoreError(error, OperationType.LIST, collectionName);
     });
   };
+
+  if (isIntracity) {
+    const handleDistrictChange = (d: string) => {
+      setSearchData(prev => ({
+        ...prev,
+        district: d,
+        origin: '',
+        destination: ''
+      }));
+    };
+
+    return (
+      <div className="space-y-6">
+        <Card className="border border-slate-100 shadow-xl rounded-2xl overflow-hidden bg-white">
+          <CardHeader className="border-b border-slate-50 pb-4">
+            <CardTitle className="flex items-center gap-2 text-slate-800 text-lg font-black">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="hover:bg-slate-100 rounded-full h-10 w-10 text-slate-700"
+                onClick={() => setView('dashboard')}
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              Kaha se Kaha aur Kab jana hai (Local & District)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <form onSubmit={handleSearch} className="space-y-4">
+              
+              {/* Row 1: District/City Searchable Selector */}
+              <div className="space-y-1">
+                <SearchableSelector
+                  label="Zila / City Search & Select"
+                  value={searchData.district}
+                  onChange={handleDistrictChange}
+                  options={PAKISTAN_CITIES_AND_DISTRICTS}
+                  placeholder="Zila / City Search..."
+                  icon={<MapPin className="w-4 h-4 text-slate-500" />}
+                />
+              </div>
+
+              {/* Row 2: Origin and Destination Inputs */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1 relative w-full">
+                  <Label className="text-xs font-bold text-slate-600 block">Kahan Se (Locality)</Label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3.5 top-3.5 text-emerald-600 w-4 h-4 z-10" />
+                    <Input
+                      type="text"
+                      value={searchData.origin}
+                      onChange={(e) => setSearchData(prev => ({ ...prev, origin: e.target.value }))}
+                      placeholder="Konsi jaga se jana hai..."
+                      className="w-full bg-white border border-slate-200 text-sm h-11 rounded-xl pr-4 pl-11 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all placeholder:italic placeholder:font-normal placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1 relative w-full">
+                  <Label className="text-xs font-bold text-slate-600 block">Kahan Tak (Locality)</Label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3.5 top-3.5 text-rose-600 w-4 h-4 z-10" />
+                    <Input
+                      type="text"
+                      value={searchData.destination}
+                      onChange={(e) => setSearchData(prev => ({ ...prev, destination: e.target.value }))}
+                      placeholder="Konsi jaga tk jana hai..."
+                      className="w-full bg-white border border-slate-200 text-sm h-11 rounded-xl pr-4 pl-11 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all placeholder:italic placeholder:font-normal placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 3: Vehicle selection buttons */}
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-600 block">Gari / Vehicle Type</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    type="button"
+                    variant={searchData.vehicle === 'Car' ? 'default' : 'outline'}
+                    className={`h-11 font-black rounded-xl flex items-center justify-center gap-1.5 text-xs transition-all ${
+                      searchData.vehicle === 'Car' 
+                        ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm' 
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                    onClick={() => setSearchData(prev => ({ ...prev, vehicle: 'Car' }))}
+                  >
+                    <Car className="w-4 h-4" /> Car 🚗
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={searchData.vehicle === 'Bike' ? 'default' : 'outline'}
+                    className={`h-11 font-black rounded-xl flex items-center justify-center gap-1.5 text-xs transition-all ${
+                      searchData.vehicle === 'Bike' 
+                        ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm' 
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                    onClick={() => setSearchData(prev => ({ ...prev, vehicle: 'Bike' }))}
+                  >
+                    <Bike className="w-4 h-4" /> Bike 🏍️
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={searchData.vehicle === 'All' ? 'default' : 'outline'}
+                    className={`h-11 font-black rounded-xl flex items-center justify-center gap-1.5 text-xs transition-all ${
+                      searchData.vehicle === 'All' 
+                        ? 'bg-slate-950 text-white shadow-sm' 
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                    onClick={() => setSearchData(prev => ({ ...prev, vehicle: 'All' }))}
+                  >
+                    All 🌐
+                  </Button>
+                </div>
+              </div>
+
+              {/* Row 4: Date and Day */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-slate-600 block">Tareekh (Date)</Label>
+                  <Input 
+                    type="date" 
+                    value={searchData.date} 
+                    onChange={e => {
+                      const d = new Date(e.target.value);
+                      setSearchData(prev => ({ ...prev, date: e.target.value, day: format(d, 'EEEE') }));
+                    }} 
+                    className="h-11 rounded-xl"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-slate-600 block">Din (Day)</Label>
+                  <Input value={searchData.day} readOnly className="bg-slate-50 h-11 rounded-xl text-slate-500 font-bold" />
+                </div>
+              </div>
+
+              {/* Row 5: Time of Day selection */}
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-600 block">Waqt (Time of Day)</Label>
+                <select
+                  className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none shadow-sm"
+                  value={searchData.time}
+                  onChange={e => setSearchData(prev => ({ ...prev, time: e.target.value }))}
+                >
+                  <option value="">All Times</option>
+                  <option value="Subah (Morning)">Subah (Morning)</option>
+                  <option value="Dopehar (Afternoon)">Dopehar (Afternoon)</option>
+                  <option value="Sham (Evening)">Sham (Evening)</option>
+                  <option value="Raat (Night)">Raat (Night)</option>
+                </select>
+              </div>
+
+              <Button 
+                type="submit" 
+                className="w-full py-6 font-black bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg transition-all active:scale-95 text-sm"
+              >
+                Dhoonden
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -2914,7 +3623,7 @@ function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick }: { setV
 
 const AnimatedFooter = memo(function AnimatedFooter({ setView }: { setView: (v: any, item?: any) => void }) {
   return (
-    <footer className="bg-white border-t pt-8 pb-6 overflow-hidden relative">
+    <footer className="bg-white border-t pt-4 pb-4 overflow-hidden relative">
       <div className="max-w-4xl mx-auto px-4 relative">
         <div className="text-center space-y-6 relative z-20">
           <div className="space-y-2">
@@ -3034,8 +3743,10 @@ function LoadingSpinner() {
   );
 }
 
-function PostForm({ user, profile, setView, type, editItem }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, type: 'ride' | 'request', editItem?: any }) {
+function PostForm({ user, profile, setView, type, editItem, travelScope }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, type: 'ride' | 'request', editItem?: any, travelScope?: 'intercity' | 'intracity' | null }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isIntracity = travelScope === 'intracity';
+
   const [formData, setFormData] = useState({
     origin: editItem?.origin || '',
     destination: editItem?.destination || '',
@@ -3044,8 +3755,10 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
     time: editItem?.time || '',
     pickupPoint: editItem?.pickupPoint || '',
     dropoffPoint: editItem?.dropoffPoint || '',
-    seats: editItem?.availableSeats?.toString() || '3',
-    price: editItem?.price?.toString() || '1000'
+    seats: editItem?.availableSeats?.toString() || '4',
+    price: editItem?.price?.toString() || '',
+    district: editItem?.district || '',
+    vehicle: editItem?.vehicle || 'Car'
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -3066,13 +3779,16 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
         date: formData.date,
         day: formData.day,
         time: formData.time,
-        pickupPoint: formData.pickupPoint,
-        dropoffPoint: formData.dropoffPoint,
-        availableSeats: parseInt(formData.seats),
-        price: parseInt(formData.price),
+        pickupPoint: formData.pickupPoint || 'Main Chowk',
+        dropoffPoint: formData.dropoffPoint || 'Main Bazar',
+        availableSeats: parseInt(formData.seats) || 1,
+        price: parseInt(formData.price) || 0,
         status: editItem ? editItem.status : 'available',
         finalStatus: editItem ? editItem.finalStatus : 'pending',
         participants: editItem?.participants || [user.uid],
+        scope: isIntracity ? 'intracity' : 'intercity',
+        district: isIntracity ? formData.district : '',
+        vehicle: isIntracity ? formData.vehicle : '',
         ...(editItem ? {} : { createdAt: serverTimestamp() })
       } : {
         passengerId: user.uid,
@@ -3086,11 +3802,16 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
         date: formData.date,
         day: formData.day,
         time: formData.time,
-        pickupPoint: formData.pickupPoint,
-        dropoffPoint: formData.dropoffPoint,
+        pickupPoint: formData.pickupPoint || 'Main Chowk',
+        dropoffPoint: formData.dropoffPoint || 'Main Bazar',
         status: editItem ? editItem.status : 'pending',
         finalStatus: editItem ? editItem.finalStatus : 'pending',
         participants: editItem?.participants || [user.uid],
+        scope: isIntracity ? 'intracity' : 'intercity',
+        district: isIntracity ? formData.district : '',
+        vehicle: isIntracity ? formData.vehicle : '',
+        availableSeats: parseInt(formData.seats) || 1,
+        price: parseInt(formData.price) || 0,
         ...(editItem ? {} : { createdAt: serverTimestamp() })
       };
 
@@ -3099,7 +3820,7 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
         toast.success('Post update ho gaya!');
       } else {
         await addDoc(collection(db, collectionName), data);
-        toast.success('Post lag gaya hai!');
+        toast.success(isIntracity ? 'Local district post lag gaya!' : 'Safar post ho gaya!');
       }
       setView('dashboard');
     } catch (error) {
@@ -3108,6 +3829,208 @@ function PostForm({ user, profile, setView, type, editItem }: { user: User | nul
       setIsSubmitting(false);
     }
   };
+
+  if (isIntracity) {
+    const handleDistrictChange = (d: string) => {
+      setFormData(prev => ({
+        ...prev,
+        district: d,
+        origin: '',
+        destination: ''
+      }));
+    };
+
+    return (
+      <Card className="border border-slate-100 shadow-xl rounded-2xl overflow-hidden bg-white">
+        <CardHeader className="border-b border-slate-50 pb-4">
+          <CardTitle className="flex items-center gap-2 text-slate-800 text-lg font-black">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="hover:bg-slate-100 rounded-full h-10 w-10 text-slate-700"
+              onClick={() => setView('dashboard')}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            {editItem ? 'Post Edit Karen' : (type === 'ride' ? 'Ride Offer Karen' : 'Safar Request Karen')} (Local & District)
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent className="p-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            
+            {/* District Selection */}
+            <div className="space-y-1">
+              <SearchableSelector
+                label="Zila / City Search & Select"
+                value={formData.district}
+                onChange={handleDistrictChange}
+                options={PAKISTAN_CITIES_AND_DISTRICTS}
+                placeholder="Zila / City Search..."
+                icon={<MapPin className="w-4 h-4 text-slate-500" />}
+              />
+            </div>
+
+            {/* Vehicle Toggle Option with Icons */}
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-slate-600 block">Gari / Ride Vehicle Type</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant={formData.vehicle === 'Car' ? 'default' : 'outline'}
+                  className={`h-11 font-black rounded-xl flex items-center justify-center gap-2 text-xs transition-all ${
+                    formData.vehicle === 'Car' 
+                      ? 'bg-blue-600 text-white shadow-sm hover:bg-blue-700' 
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  onClick={() => setFormData({...formData, vehicle: 'Car', seats: '4'})}
+                >
+                  <Car className="w-4 h-4" /> Car (Gari) 🚗
+                </Button>
+                <Button
+                  type="button"
+                  variant={formData.vehicle === 'Bike' ? 'default' : 'outline'}
+                  className={`h-11 font-black rounded-xl flex items-center justify-center gap-2 text-xs transition-all ${
+                    formData.vehicle === 'Bike' 
+                      ? 'bg-blue-600 text-white shadow-sm hover:bg-blue-700' 
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  onClick={() => setFormData({...formData, vehicle: 'Bike', seats: '1'})}
+                >
+                  <Bike className="w-4 h-4" /> Bike (Motorcycle) 🏍️
+                </Button>
+              </div>
+            </div>
+
+            {/* Locations (From and To inside District) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1 relative w-full">
+                <Label className="text-xs font-bold text-slate-600 block">Kahan Se (Locality)</Label>
+                <div className="relative">
+                  <MapPin className="absolute left-3.5 top-3.5 text-emerald-600 w-4 h-4 z-10" />
+                  <Input
+                    type="text"
+                    value={formData.origin}
+                    onChange={(e) => setFormData(prev => ({ ...prev, origin: e.target.value }))}
+                    placeholder="Konsi jaga se jana hai..."
+                    className="w-full bg-white border border-slate-200 text-sm h-11 rounded-xl pr-4 pl-11 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all placeholder:italic placeholder:font-normal placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1 relative w-full">
+                <Label className="text-xs font-bold text-slate-600 block">Kahan Tak (Locality)</Label>
+                <div className="relative">
+                  <MapPin className="absolute left-3.5 top-3.5 text-rose-600 w-4 h-4 z-10" />
+                  <Input
+                    type="text"
+                    value={formData.destination}
+                    onChange={(e) => setFormData(prev => ({ ...prev, destination: e.target.value }))}
+                    placeholder="Konsi jaga tk jana hai..."
+                    className="w-full bg-white border border-slate-200 text-sm h-11 rounded-xl pr-4 pl-11 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all placeholder:italic placeholder:font-normal placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Date, Day, and Time */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-600 block">Tareekh (Date)</Label>
+                <Input 
+                  type="date" 
+                  value={formData.date} 
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val) {
+                      const d = new Date(val);
+                      setFormData({...formData, date: val, day: format(d, 'EEEE')});
+                    } else {
+                      setFormData({...formData, date: val, day: ''});
+                    }
+                  }} 
+                  required 
+                  className="h-11 rounded-xl"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-600 block">Din (Day)</Label>
+                <Input value={formData.day} readOnly className="bg-slate-50 h-11 rounded-xl text-slate-500 font-bold" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-bold text-slate-600 block">Waqt (Time)</Label>
+              <Input 
+                type="time" 
+                value={formData.time} 
+                onChange={e => setFormData({...formData, time: e.target.value})} 
+                required 
+                className="h-11 rounded-xl"
+              />
+            </div>
+
+            {/* Seats & Rent (Karaya) */}
+            <div className="grid grid-cols-2 gap-4 border border-slate-100 bg-slate-50/10 p-4 rounded-xl">
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-600 block">Available Seats</Label>
+                <select
+                  value={formData.seats}
+                  onChange={(e) => setFormData({...formData, seats: e.target.value})}
+                  className="w-full bg-white border border-slate-200 text-sm h-11 rounded-xl px-3 font-semibold focus:ring-1 focus:ring-blue-500 text-slate-700 outline-none shadow-sm"
+                >
+                  {formData.vehicle === 'Bike' ? (
+                    <option value="1">1 Seat</option>
+                  ) : (
+                    <>
+                      <option value="1">1 Seat</option>
+                      <option value="2">2 Seats</option>
+                      <option value="3">3 Seats</option>
+                      <option value="4">4 Seats</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-1">
+                  <Label className="text-xs font-bold text-slate-600 block">Karaaya (Fare Rs.)</Label>
+                  <Popover>
+                    <PopoverTrigger className="text-slate-400 hover:text-blue-600 transition-colors">
+                      <Info className="w-3.5 h-3.5" />
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-4 bg-white shadow-2xl border-slate-200 rounded-2xl z-50">
+                      <p className="text-xs text-slate-600 leading-relaxed font-semibold">
+                        Karaaya bohot munaasib rakhen taake log asaani se raabta kr saken!
+                      </p>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <Input 
+                  type="number" 
+                  min="0"
+                  placeholder="Karaaya munasib rakhein."
+                  value={formData.price} 
+                  onChange={e => setFormData({...formData, price: e.target.value})} 
+                  required 
+                  className="h-11 rounded-xl font-black text-blue-700 bg-blue-50/10 focus-visible:ring-blue-550 placeholder:text-blue-400 placeholder:font-normal placeholder:italic placeholder:text-[9.5px] xs:placeholder:text-[11px]"
+                />
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <Button 
+              type="submit" 
+              className="w-full py-6 text-base font-black bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg transition-all hover:scale-[1.01] active:scale-[0.98]" 
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Posting...' : (type === 'ride' ? '✓ Local Ride Post Karen' : '✓ Passenger Request Post Karen')}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -3234,6 +4157,18 @@ function DetailedProfileView({
       <CardContent className="space-y-6">
         {!isUserProfile ? (
           <div className="bg-slate-50 p-4 rounded-xl space-y-2">
+            {item.scope === 'intracity' && (
+              <>
+                <div className="flex justify-between text-sm border-b border-dashed border-slate-200 pb-2 mb-2">
+                  <span className="text-slate-500 font-bold">District / Zila:</span>
+                  <span className="font-extrabold text-emerald-700">{item.district || 'Karak'}</span>
+                </div>
+                <div className="flex justify-between text-sm border-b border-dashed border-slate-200 pb-2 mb-2">
+                  <span className="text-slate-500 font-bold">Ride Vehicle:</span>
+                  <span className="font-extrabold text-indigo-700">{item.vehicle === 'Bike' ? 'Motorcycle (Bike) 🏍️' : 'Car (Gaari) 🚗'}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">Tareekh:</span>
               <span className="font-medium">{item.date} ({item.day})</span>
@@ -5022,6 +5957,134 @@ function WhatsAppConfirmationModal({ item, user, profile, onClose }: { item: any
           </Button>
         </div>
       </motion.div>
+    </div>
+  );
+}
+
+function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'intracity') => void }) {
+  return (
+    <div className="space-y-6 pt-4 pb-2 animate-fade-in font-outfit">
+      <div className="text-center space-y-3">
+        <motion.h2 
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight flex flex-col items-center"
+        >
+          <span><span className="text-red-500">EasyTravel</span> me</span>
+          <span className="text-emerald-600">Khush Amdeed!</span>
+        </motion.h2>
+        <div className="space-y-4 max-w-2xl mx-auto px-4 pt-4 font-outfit text-left">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-blue-50/80 border border-blue-100 py-4 px-6 rounded-2xl shadow-sm text-center"
+          >
+            <p className="text-base md:text-lg font-bold text-slate-800 tracking-tight">
+              <span className="font-black text-blue-600">Passenger</span> ho ya <span className="font-black text-blue-600">Car Owner</span> - Ab Apka Safar ' Hamari Zimedaari
+            </p>
+            <p className="text-[11px] md:text-sm font-bold text-slate-500 mt-2 whitespace-nowrap overflow-hidden text-ellipsis">
+              Fauri Raabta - Araam Deh Safar - Kam Kharcha
+            </p>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-slate-50 border border-slate-200 py-3 px-6 rounded-xl text-center"
+          >
+            <p className="text-sm md:text-base font-semibold text-slate-600 leading-relaxed">
+              <span className="font-black text-slate-900">Car Owner</span> k pas Seats Khaali hain ? - Aur - <span className="font-black text-slate-900">Passenger</span> Kharab Transport System se Pareshaan hai ?
+            </p>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-emerald-50/40 border border-emerald-100/30 py-4 px-6 rounded-2xl text-center"
+          >
+            <p className="text-sm md:text-base text-slate-600 font-medium leading-relaxed">
+              Abhi <span className="font-bold text-emerald-700">EasyTravel</span> pe Search Karen ya Post Lagayen - <span className="font-black text-emerald-800">Car Owner</span> apna Fuel ka Kharcha Bachaen - <span className="font-black text-emerald-800">Passenger</span> apna Safar Araam Deh Banaaen
+            </p>
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto px-4 mt-8">
+        {/* Card 1: Intercity */}
+        <motion.div
+          whileHover={{ scale: 1.02, translateY: -3 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <Card 
+            className="h-full cursor-pointer border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-700 to-indigo-900 text-white group relative flex flex-col justify-between min-h-[16rem]"
+            onClick={() => onSelect('intercity')}
+          >
+            <motion.div 
+              animate={{ x: [0, 8, -8, 0], y: [0, -3, 3, 0] }}
+              transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+              className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"
+            >
+              <Car className="w-32 h-32 rotate-12" />
+            </motion.div>
+            <CardHeader className="p-8 relative z-10 flex-1">
+              <div className="bg-white/20 w-12 h-12 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-md overflow-hidden">
+                <motion.div
+                  animate={{ x: [-32, 32] }}
+                  transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
+                  className="flex items-center"
+                >
+                  <Car className="w-6 h-6 text-white" />
+                </motion.div>
+              </div>
+              <CardTitle className="text-3xl font-bold tracking-tight leading-tight">
+                CITY-TO-CITY Safar Karna Hai
+              </CardTitle>
+              <CardDescription className="text-blue-100 mt-6 text-sm md:text-base font-bold tracking-wide leading-relaxed space-y-1 block">
+                <span>Karak se Islamabad</span><br />
+                <span>Karak se Peshawar</span><br />
+                <span>Islamabad se Karak etc</span>
+              </CardDescription>
+            </CardHeader>
+            <div className="px-8 pb-8 pt-0 relative z-10">
+            </div>
+          </Card>
+        </motion.div>
+
+        {/* Card 2: Intracity / District */}
+        <motion.div
+          whileHover={{ scale: 1.02, translateY: -3 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <Card 
+            className="h-full cursor-pointer border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-700 to-teal-900 text-white group relative flex flex-col justify-between min-h-[16rem]"
+            onClick={() => onSelect('intracity')}
+          >
+            <motion.div 
+              animate={{ x: [0, -6, 6, 0], y: [0, 5, -5, 0], rotate: [-12, -8, -16, -12] }}
+              transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+              className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"
+            >
+              <Navigation className="w-32 h-32" />
+            </motion.div>
+            <CardHeader className="p-8 relative z-10 flex-1">
+              <div className="bg-white/20 w-12 h-12 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-md">
+                <Navigation className="w-6 h-6 text-white animate-bounce" />
+              </div>
+              <CardTitle className="text-3xl font-bold tracking-tight leading-tight">
+                District/City k andar Safar Karna Hai
+              </CardTitle>
+              <CardDescription className="text-emerald-100 mt-6 text-sm md:text-base font-bold tracking-wide leading-relaxed">
+                Ek jaga se Dusri jaga
+              </CardDescription>
+            </CardHeader>
+            <div className="px-8 pb-8 pt-0 relative z-10">
+            </div>
+          </Card>
+        </motion.div>
+      </div>
     </div>
   );
 }

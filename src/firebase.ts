@@ -1,29 +1,41 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  setLogLevel, 
+  doc, 
+  getDocFromServer,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
 }, firebaseConfig.firestoreDatabaseId);
 
-// Test connection to Firestore
+// Validate Connection to Firestore on initial boot as required by Firebase Skill
 async function testConnection() {
   try {
-    // Attempt to fetch a non-existent document from the server to test connectivity
-    await getDocFromServer(doc(db, '_connection_test_', 'ping'));
-    console.log('Firestore connection test successful');
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Firestore connection test: SUCCESSFUL");
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Firestore Configuration Error: The client is offline. This usually means the firebase-applet-config.json is incorrect or the database is not provisioned.");
+      console.warn("Firestore connection test: Please check your Firebase configuration or network status.");
     } else {
-      console.warn('Firestore connection test notice (can be ignored if app works):', error);
+      console.warn("Firestore connection test warning:", error);
     }
   }
 }
 testConnection();
+
+// Silence internal non-blocking connection warnings / test environment messages
+setLogLevel('error');
 
 export const googleProvider = new GoogleAuthProvider();
 

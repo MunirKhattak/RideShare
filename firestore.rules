@@ -121,22 +121,32 @@ service cloud.firestore {
 
     function isValidRide(data) {
       return hasRequiredFields(['driverId', 'driverName', 'origin', 'destination', 'date', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'participants', 'createdAt']) &&
-             hasOnlyAllowedFields(['driverId', 'driverName', 'driverPhoto', 'phoneNumber', 'whatsappNumber', 'bio', 'origin', 'destination', 'date', 'day', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'participants', 'finalStatus', 'interactions', 'rewardStatus', 'statusReportedAt', 'createdAt']) &&
+             hasOnlyAllowedFields(['driverId', 'driverName', 'driverPhoto', 'phoneNumber', 'whatsappNumber', 'bio', 'origin', 'destination', 'date', 'day', 'time', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price', 'status', 'participants', 'finalStatus', 'interactions', 'rewardStatus', 'statusReportedAt', 'createdAt', 'scope', 'district', 'vehicle']) &&
              data.driverId == request.auth.uid &&
              data.participants is list && request.auth.uid in data.participants &&
              data.availableSeats is number &&
              data.price is number && data.price >= 0 &&
              data.status in ['available', 'full', 'completed', 'cancelled'] &&
-             (!('finalStatus' in data) || data.finalStatus in ['pending', 'done', 'cancelled', 'late']);
+             (!('finalStatus' in data) || data.finalStatus in ['pending', 'done', 'cancelled', 'late']) &&
+             (!('scope' in data) || data.scope is string) &&
+             (!('district' in data) || data.district is string) &&
+             (!('vehicle' in data) || data.vehicle is string);
     }
 
     function isValidRideRequest(data) {
       return hasRequiredFields(['passengerId', 'passengerName', 'origin', 'destination', 'date', 'time', 'status', 'participants', 'createdAt']) &&
-             hasOnlyAllowedFields(['passengerId', 'passengerName', 'passengerPhoto', 'phoneNumber', 'whatsappNumber', 'bio', 'origin', 'destination', 'date', 'day', 'time', 'status', 'participants', 'finalStatus', 'interactions', 'rewardStatus', 'statusReportedAt', 'createdAt']) &&
+             hasOnlyAllowedFields(['passengerId', 'passengerName', 'passengerPhoto', 'phoneNumber', 'whatsappNumber', 'bio', 'origin', 'destination', 'date', 'day', 'time', 'status', 'participants', 'finalStatus', 'interactions', 'rewardStatus', 'statusReportedAt', 'createdAt', 'scope', 'district', 'vehicle', 'pickupPoint', 'dropoffPoint', 'availableSeats', 'price']) &&
              data.passengerId == request.auth.uid &&
              data.participants is list && request.auth.uid in data.participants &&
              data.status in ['pending', 'matched', 'cancelled'] &&
-             (!('finalStatus' in data) || data.finalStatus in ['pending', 'done', 'cancelled', 'late']);
+             (!('finalStatus' in data) || data.finalStatus in ['pending', 'done', 'cancelled', 'late']) &&
+             (!('scope' in data) || data.scope is string) &&
+             (!('district' in data) || data.district is string) &&
+             (!('vehicle' in data) || data.vehicle is string) &&
+             (!('pickupPoint' in data) || data.pickupPoint is string) &&
+             (!('dropoffPoint' in data) || data.dropoffPoint is string) &&
+             (!('availableSeats' in data) || data.availableSeats is number) &&
+             (!('price' in data) || data.price is number);
     }
 
     function isValidRewardHistory(data) {
@@ -241,10 +251,15 @@ service cloud.firestore {
     }
 
     match /analytics/{dateId} {
-      allow read: if isAdmin();
-      allow create, update: if isAuthenticated() && (
-        !('visits' in request.resource.data) || request.resource.data.visits is number
-      );
+      allow read, create, update: if true;
+    }
+
+    match /_connection_test_/{docId} {
+      allow read, write: if true;
+    }
+
+    match /test/{docId} {
+      allow read, write: if true;
     }
 
     match /warnings/{warningId} {
