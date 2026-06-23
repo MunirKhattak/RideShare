@@ -123,11 +123,11 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
+    <div className="min-h-screen bg-premium-login-gradient flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
       
       {/* Decorative background gradients (very subtle, clean) */}
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-blue-100/30 rounded-full blur-3xl pointer-events-none -z-10" />
-      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-red-50/40 rounded-full blur-3xl pointer-events-none -z-10" />
+      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-blue-100/20 rounded-full blur-3xl pointer-events-none -z-10" />
+      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-red-50/30 rounded-full blur-3xl pointer-events-none -z-10" />
 
       {/* Header containing application branding matching the original splash screen */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center z-10">
@@ -147,9 +147,54 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
               <span className="text-red-600">Easy</span>
               <span className="text-blue-600">Travel</span>
             </h1>
-            <p className="text-blue-500 font-bold text-xs tracking-tight flex items-center gap-1">
-              Let's Travel Together 🚙
-            </p>
+            
+            {/* Center-aligned beautiful animated tagline with driving car - w-56 with meticulously calculated safe boundaries */}
+            <div className="h-6 w-56 relative overflow-hidden mt-1 mx-auto">
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <motion.div
+                  animate={{ 
+                    clipPath: [
+                      "inset(0 100% 0 0)",
+                      "inset(0 0% 0 0)",
+                      "inset(0 0% 0 0)",
+                      "inset(0 0% 0 100%)",
+                      "inset(0 100% 0 0)"
+                    ]
+                  }}
+                  transition={{ 
+                    duration: 6, 
+                    repeat: Infinity, 
+                    ease: "easeInOut" 
+                  }}
+                  className="text-blue-500 font-extrabold text-xs tracking-wide whitespace-nowrap"
+                >
+                  Let's Travel Together
+                </motion.div>
+              </div>
+
+              <motion.div
+                animate={{ 
+                  left: ["14%", "81%", "81%", "14%", "14%"],
+                  rotateY: [0, 0, 180, 180, 0]
+                }}
+                transition={{ 
+                  duration: 6, 
+                  repeat: Infinity, 
+                  ease: "easeInOut",
+                  times: [0, 0.45, 0.5, 0.95, 1]
+                }}
+                className="absolute bottom-0.5"
+              >
+                <div className="relative">
+                  <Car className="w-4 h-4 text-blue-600 fill-blue-100/50" />
+                  <motion.div 
+                    animate={{ opacity: [0, 1, 0] }}
+                    transition={{ duration: 0.3, repeat: Infinity }}
+                    className="absolute -left-0.5 top-1/2 w-1 h-0.5 bg-blue-400/50 blur-[0.5px]"
+                  />
+                </div>
+              </motion.div>
+            </div>
           </div>
         </motion.div>
       </div>
@@ -164,40 +209,51 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
               transition={{ duration: 0.25 }}
+              className="space-y-4"
             >
-              <Card className="border border-slate-100 bg-white shadow-xl rounded-2xl p-2">
-                <CardHeader className="text-center pb-4 pt-6">
-                  <CardTitle className="text-xl font-bold text-slate-800">Khush Amdeed!</CardTitle>
-                  <CardDescription className="text-slate-500 text-sm">
-                    Apna safar shuru karne ke liye Continue karein.
+              {/* Card 1: The Problem Card (Halka Sa Red/Orange Warm Tint) */}
+              <Card className="border border-red-100 bg-[#FEF2F2] shadow-lg rounded-2xl p-2 transition-all duration-300">
+                <CardHeader className="text-center pb-3 pt-5 px-4">
+                  <CardTitle className="text-[14px] sm:text-[15px] font-extrabold text-slate-800 leading-snug px-2">
+                    Es Digital Daur Me Bhi Kharaab Transport aur Bhaari Karaaye Se Pareshan Hain?
+                  </CardTitle>
+                </CardHeader>
+              </Card>
+
+              {/* Card 2: The Solution & Login Card (Pure White Card) */}
+              <Card className="border border-slate-100 bg-white shadow-xl rounded-2xl p-2 transition-all duration-300">
+                <CardHeader className="text-center pb-2 pt-6 px-6">
+                  <CardDescription className="text-[#333333] text-sm sm:text-base mt-1 leading-relaxed px-2 font-semibold">
+                    Ab pareshan hona chorh dein! <span className="text-blue-600 font-bold">EasyTravel</span> laya hai aik hi click me in sab maslon ka behtareen Digital Solution.
                   </CardDescription>
                 </CardHeader>
                 
-                <CardContent className="space-y-4 px-6 pb-6 pt-2">
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 text-center">
-                    <p className="text-slate-600 text-sm font-medium italic">
-                      "Har safar ki ek kahani hoti hai, aap ki kya hai?"
-                    </p>
-                  </div>
-
-                  {/* Continue with Google button */}
-                  <Button 
-                    onClick={handleGoogleSignIn} 
-                    disabled={isSigningIn}
-                    className="w-full py-6 text-base font-bold rounded-xl gap-3 bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 shadow-sm transition-all duration-200 active:scale-[0.98] h-12"
+                <CardContent className="space-y-4 px-6 pb-6 pt-4">
+                  {/* Continue with Google button with a subtle popup movement */}
+                  <motion.div
+                    initial={{ scale: 0.96, opacity: 0.9 }}
+                    animate={{ scale: [0.96, 1.015, 1], opacity: 1 }}
+                    transition={{ 
+                      duration: 0.6, 
+                      ease: "easeOut",
+                      times: [0, 0.6, 1]
+                    }}
+                    whileHover={{ scale: 1.025, y: -1 }}
+                    whileTap={{ scale: 0.985, y: 1 }}
                   >
-                    {isSigningIn ? (
-                      <div className="w-5 h-5 border-2 border-slate-800 border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-                    )}
-                    Continue with Google
-                  </Button>
-
-                  <div className="flex items-center justify-center gap-1.5 pt-2 text-[11px] text-slate-400 font-medium">
-                    <ShieldCheck className="w-4 h-4 text-blue-500" />
-                    Mehfooz aur Asaan Zariya Transport
-                  </div>
+                    <Button 
+                      onClick={handleGoogleSignIn} 
+                      disabled={isSigningIn}
+                      className="w-full py-6 text-base font-extrabold rounded-xl gap-3 bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-md transition-all duration-200 h-12"
+                    >
+                      {isSigningIn ? (
+                        <div className="w-5 h-5 border-2 border-slate-800 border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+                      )}
+                      Continue with Google
+                    </Button>
+                  </motion.div>
                 </CardContent>
               </Card>
             </motion.div>
@@ -289,17 +345,8 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
         </AnimatePresence>
       </div>
 
-      {/* Footer containing standard guidelines */}
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center z-10">
-        <p className="text-[11px] text-slate-400 font-medium">
-          Aage barhne se aap hamari{' '}
-          <span className="text-blue-500 underline cursor-pointer hover:text-blue-600 font-bold" onClick={() => setView('privacy_policy')}>Privacy Policy</span>{' '}
-          se ittifaq karte hain.
-        </p>
-        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1.5">
-          EasyTravel Safe Transportation Program © 2026
-        </p>
-      </div>
+      {/* Footer deleted to clean layout and satisfy user design instructions */}
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center z-10" />
 
     </div>
   );

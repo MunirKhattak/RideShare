@@ -141,6 +141,10 @@
 }
 
 /* Custom visual scrollbars */
+.bg-premium-login-gradient {
+  background: linear-gradient(180deg, #E2E8F0 0%, #94A3B8 100%) !important;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

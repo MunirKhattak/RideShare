@@ -3691,7 +3691,7 @@ function LoadingSpinner() {
           </h1>
           
           {/* Car Animation */}
-          <div className="h-8 w-40 relative overflow-hidden">
+          <div className="h-8 w-56 relative overflow-hidden">
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <motion.div
                 animate={{ 
@@ -3708,7 +3708,7 @@ function LoadingSpinner() {
                   repeat: Infinity, 
                   ease: "easeInOut" 
                 }}
-                className="text-blue-500 font-bold text-[12px] tracking-tighter whitespace-nowrap"
+                className="text-blue-500 font-extrabold text-[12px] tracking-wide whitespace-nowrap"
               >
                 Let's Travel Together
               </motion.div>
@@ -3716,7 +3716,7 @@ function LoadingSpinner() {
 
             <motion.div
               animate={{ 
-                left: ["0%", "85%", "85%", "0%", "0%"],
+                left: ["14%", "81%", "81%", "14%", "14%"],
                 rotateY: [0, 0, 180, 180, 0]
               }}
               transition={{ 
