@@ -17,7 +17,8 @@ import {
   Info,
   Bike,
   Car as CarIcon,
-  ExternalLink
+  ExternalLink,
+  Edit
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -167,6 +168,7 @@ export default function LiveActivePassengerMap({
   setSelfDestination = () => {},
   selfVehicleType = 'All',
   setSelfVehicleType = () => {},
+  travelScope = 'intercity',
 }: {
   userRole?: 'driver' | 'passenger';
   driverProfile: any;
@@ -179,6 +181,7 @@ export default function LiveActivePassengerMap({
   setSelfDestination?: (val: string) => void;
   selfVehicleType?: 'Car' | 'Bike' | 'All';
   setSelfVehicleType?: (val: 'Car' | 'Bike' | 'All') => void;
+  travelScope?: 'intercity' | 'intracity' | null;
 }) {
   const [activeTargets, setActiveTargets] = useState<PassengerProfile[]>([]);
   const [showRouteModal, setShowRouteModal] = useState(false);
@@ -511,24 +514,27 @@ export default function LiveActivePassengerMap({
                <div className="space-y-1">
                  <div className="text-white">
                    <p className="text-[10px] font-black uppercase text-blue-200 tracking-wider">Aap Ka Active Route:</p>
-                   <p className="text-lg font-black tracking-tight font-sans drop-shadow flex flex-wrap items-center gap-x-2 gap-y-1">
-                     <span>{selfOrigin}</span>
-                     <span className="text-blue-300">➔</span>
-                     <span>{selfDestination}</span>
+                   <div className="flex items-center gap-x-3 gap-y-2 mt-1 flex-wrap">
+                     <div className="text-xl sm:text-2xl font-black tracking-tight font-sans drop-shadow flex items-center gap-x-2 leading-none">
+                       <span>{selfOrigin}</span>
+                       <span className="text-blue-300 text-lg">➔</span>
+                       <span>{selfDestination}</span>
+                     </div>
                     {userRole === 'driver' && (
                       <button
                         onClick={() => {
                           setModalOrigin('');
                           setModalDestination('');
-                          setModalVehicleType(selfVehicleType);
+                          setModalVehicleType(travelScope === 'intercity' ? 'Car' : selfVehicleType);
                           setShowRouteModal(true);
                         }}
-                        className="ml-2 bg-yellow-400 hover:bg-yellow-500 text-slate-950 text-[11px] font-black px-2.5 py-0.5 rounded-full shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-1 border border-yellow-300"
+                        className="bg-white/20 hover:bg-white/30 text-white text-[10px] leading-none font-bold px-3 py-1.5 rounded-full shadow-sm hover:shadow-md hover:scale-105 active:scale-95 transition-all border border-white/30 flex items-center gap-1.5 backdrop-blur-sm shrink-0"
                       >
-                        Change Route
+                        <Edit className="w-3 h-3" />
+                        <span>Change Route</span>
                       </button>
                     )}
-                   </p>
+                   </div>
                  </div>
                  <div className="flex items-center gap-1.5 text-xs text-blue-100 font-semibold">
                    <span className="bg-emerald-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded animate-pulse">LIVE</span>
@@ -556,7 +562,7 @@ export default function LiveActivePassengerMap({
                   if (n) {
                     setModalOrigin('');
                     setModalDestination('');
-                    setModalVehicleType(selfVehicleType);
+                    setModalVehicleType(travelScope === 'intercity' ? 'Car' : selfVehicleType);
                     setShowRouteModal(true);
                     return;
                   }
@@ -1163,73 +1169,75 @@ export default function LiveActivePassengerMap({
                       type="text" 
                       value={modalDestination}
                       onChange={(e) => setModalDestination(e.target.value)}
-                      placeholder="e.g. Latamber, Karak"
+                      placeholder={travelScope === 'intercity' ? "e.g. Islamabad" : "e.g. Latamber, Karak"}
                       className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-900 placeholder:italic placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
                     />
                   </div>
                 </div>
 
                 {/* Options below the inputs based on role */}
-                <div className="space-y-2 pt-1">
-                  {userRole === 'passenger' ? (
-                    <>
-                      <label className="text-xs font-bold text-slate-700">
-                        Safar Kis Cheez Par Karna Hai? (Preference)
-                      </label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {[
-                          { value: 'All', label: 'All 🎒', desc: 'Any Ride' },
-                          { value: 'Car', label: 'Car 🚗', desc: 'Comfortable' },
-                          { value: 'Bike', label: 'Bike 🏍️', desc: 'Fast & Eco' }
-                        ].map((opt) => (
-                          <button
-                            type="button"
-                            key={opt.value}
-                            onClick={() => setModalVehicleType(opt.value as any)}
-                            className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5 ${
-                              modalVehicleType === opt.value
-                                ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20 font-black scale-[1.03]'
-                                : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 font-semibold'
-                            }`}
-                          >
-                            <span className="text-xs">{opt.label}</span>
-                            <span className={`text-[8px] font-medium block ${modalVehicleType === opt.value ? 'text-blue-105' : 'text-slate-400'}`}>
-                              {opt.desc}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <label className="text-xs font-bold text-slate-700">
-                        Aapke Paas Konsi Gari Hai? (Vehicle Type)
-                      </label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {[
-                          { value: 'Car', label: 'Car 🚗', desc: '4-Wheel Owner' },
-                          { value: 'Bike', label: 'Bike 🏍️', desc: '2-Wheel Owner' }
-                        ].map((opt) => (
-                          <button
-                            type="button"
-                            key={opt.value}
-                            onClick={() => setModalVehicleType(opt.value as any)}
-                            className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
-                              modalVehicleType === opt.value
-                                ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20 font-black scale-[1.03]'
-                                : 'bg-slate-50 hover:bg-slate-105 border-slate-200 text-slate-700 font-semibold'
-                            }`}
-                          >
-                            <span className="text-sm">{opt.label}</span>
-                            <span className={`text-[9px] font-medium block ${modalVehicleType === opt.value ? 'text-blue-105' : 'text-slate-400'}`}>
-                              {opt.desc}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
+                {travelScope !== 'intercity' && (
+                  <div className="space-y-2 pt-1">
+                    {userRole === 'passenger' ? (
+                      <>
+                        <label className="text-xs font-bold text-slate-700">
+                          Safar Kis Cheez Par Karna Hai? (Preference)
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { value: 'All', label: 'All 🎒', desc: 'Any Ride' },
+                            { value: 'Car', label: 'Car 🚗', desc: 'Comfortable' },
+                            { value: 'Bike', label: 'Bike 🏍️', desc: 'Fast & Eco' }
+                          ].map((opt) => (
+                            <button
+                              type="button"
+                              key={opt.value}
+                              onClick={() => setModalVehicleType(opt.value as any)}
+                              className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5 ${
+                                modalVehicleType === opt.value
+                                  ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20 font-black scale-[1.03]'
+                                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 font-semibold'
+                              }`}
+                            >
+                              <span className="text-xs">{opt.label}</span>
+                              <span className={`text-[8px] font-medium block ${modalVehicleType === opt.value ? 'text-blue-105' : 'text-slate-400'}`}>
+                                {opt.desc}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <label className="text-xs font-bold text-slate-700">
+                          Aapke Paas Konsi Gari Hai? (Vehicle Type)
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { value: 'Car', label: 'Car 🚗', desc: '4-Wheel Owner' },
+                            { value: 'Bike', label: 'Bike 🏍️', desc: '2-Wheel Owner' }
+                          ].map((opt) => (
+                            <button
+                              type="button"
+                              key={opt.value}
+                              onClick={() => setModalVehicleType(opt.value as any)}
+                              className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                                modalVehicleType === opt.value
+                                  ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20 font-black scale-[1.03]'
+                                  : 'bg-slate-50 hover:bg-slate-105 border-slate-200 text-slate-700 font-semibold'
+                              }`}
+                            >
+                              <span className="text-sm">{opt.label}</span>
+                              <span className={`text-[9px] font-medium block ${modalVehicleType === opt.value ? 'text-blue-105' : 'text-slate-400'}`}>
+                                {opt.desc}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Submitting Actions */}
