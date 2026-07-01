@@ -150,3 +150,24 @@ export interface Booking {
   driverWhatsapp?: string;
   createdAt: any;
 }
+
+export interface WalletRechargeRequest {
+  id: string;
+  userId: string;
+  userDisplayName: string;
+  userEmail: string;
+  amount: number;
+  method: string;
+  txnId: string;
+  status: 'pending' | 'approved' | 'declined';
+  timestamp: any;
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  read: boolean;
+  timestamp: any;
+}

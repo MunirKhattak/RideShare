@@ -87,7 +87,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (request.auth.token.email == "munirkhattak.pk@gmail.com" ||
+        (('email' in request.auth.token && request.auth.token.email == "munirkhattak.pk@gmail.com") ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
@@ -110,13 +110,14 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return hasRequiredFields(['uid', 'displayName', 'email', 'role', 'createdAt']) &&
-             hasOnlyAllowedFields(['uid', 'customId', 'displayName', 'email', 'photoURL', 'phoneNumber', 'whatsappNumber', 'role', 'bio', 'easyCoins', 'createdAt']) &&
+             hasOnlyAllowedFields(['uid', 'customId', 'displayName', 'email', 'photoURL', 'phoneNumber', 'whatsappNumber', 'role', 'bio', 'easyCoins', 'walletBalance', 'createdAt']) &&
              data.uid == request.auth.uid &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
              isValidEmail(data.email) &&
              data.role in ['driver', 'passenger', 'both', 'admin'] &&
              (!('bio' in data) || (data.bio is string && data.bio.size() <= 500)) &&
-             (!('easyCoins' in data) || data.easyCoins is number);
+             (!('easyCoins' in data) || data.easyCoins is number) &&
+             (!('walletBalance' in data) || data.walletBalance is number);
     }
 
     function isValidRide(data) {
@@ -281,6 +282,23 @@ service cloud.firestore {
         isValidBooking(request.resource.data)
       ) || isAdmin();
       allow delete: if isAdmin();
+    }
+
+    match /paymentRequests/{paymentId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
   }
 }

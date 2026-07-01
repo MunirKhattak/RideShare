@@ -26,24 +26,36 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-interface WalletDemoModalProps {
+import { UserProfile } from '../types';
+import { db } from '../firebase';
+import { collection, addDoc, serverTimestamp, doc, updateDoc, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+
+interface WalletModalProps {
   isOpen: boolean;
   onClose: () => void;
   driverName?: string;
+  profile?: UserProfile;
 }
 
-export default function WalletDemoModal({ isOpen, onClose, driverName = "Karak Jan" }: WalletDemoModalProps) {
-  // Current values state for active simulation
-  const [walletBalance, setWalletBalance] = useState<number>(500); // Free Rs. 500 starting bonus
-  const [totalProfit, setTotalProfit] = useState<number>(12800); // total earned so far
-  const [monthlyProfit, setMonthlyProfit] = useState<number>(5400); // monthly earned
+export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan", profile }: WalletModalProps) {
+  // Current values state for active user
+  const [walletBalance, setWalletBalance] = useState<number>(0); 
+
+  useEffect(() => {
+    if (profile && (profile as any).walletBalance !== undefined) {
+      setWalletBalance((profile as any).walletBalance);
+    }
+  }, [profile]);
+
+  const [totalProfit, setTotalProfit] = useState<number>(0); 
+  const [monthlyProfit, setMonthlyProfit] = useState<number>(0); 
   const [selectedProfitView, setSelectedProfitView] = useState<'total' | 'monthly'>('total');
   const [flatFeeDues, setFlatFeeDues] = useState<number>(500); // monthly app & db flat fee
   const [paidFeeAmount, setPaidFeeAmount] = useState<number>(0);
   const [feeNotice, setFeeNotice] = useState<string>('');
   
-  // Simulated stats
-  const [completedRidesCount, setCompletedRidesCount] = useState<number>(42);
+  // Real stats can be implemented later
+  const [completedRidesCount, setCompletedRidesCount] = useState<number>(0);
   const [transactions, setTransactions] = useState<Array<{
     id: string;
     type: 'recharge' | 'deduction' | 'bonus';
@@ -51,24 +63,29 @@ export default function WalletDemoModal({ isOpen, onClose, driverName = "Karak J
     title: string;
     date: string;
     status: 'success' | 'pending';
-  }>>([
-    { id: '1', type: 'bonus', amount: 500, title: 'Welcome Loyalty Gift Pass 🎁', date: 'Aaj, 09:00 AM', status: 'success' },
-    { id: '2', type: 'deduction', amount: 25, title: 'Karak to Latamber Ride Cut (5%)', date: 'Kal, 06:15 PM', status: 'success' },
-    { id: '3', type: 'recharge', amount: 300, title: 'Recharge via Easypaisa', date: 'Kal, 11:32 AM', status: 'success' },
-    { id: '4', type: 'deduction', amount: 30, title: 'Karak to Latamber Ride Cut (5%)', date: '2 Din Pehle', status: 'success' },
-  ]);
+  }>>([]);
 
   // Sub-views in page
   const [activeTab, setActiveTab] = useState<'wallet' | 'guide'>('wallet');
   const [showRechargeDialog, setShowRechargeDialog] = useState<boolean>(false);
-  const [rechargeAmount, setRechargeAmount] = useState<string>('200');
-  const [selectedMethod, setSelectedMethod] = useState<'easypaisa' | 'jazzcash' | 'nayapay' | 'bank'>('easypaisa');
+  const [rechargeAmount, setRechargeAmount] = useState<string>('');
+  const [selectedMethod, setSelectedMethod] = useState<'easypaisa' | 'jazzcash' | 'nayapay'>('easypaisa');
   const [rechargeMobileNum, setRechargeMobileNum] = useState<string>('03331234567');
   const [selectedBank, setSelectedBank] = useState<string>('meezan');
   const [bankReceiptUploaded, setBankReceiptUploaded] = useState<boolean>(false);
   const [txnReferenceId, setTxnReferenceId] = useState<string>('');
   const [rechargeSuccess, setRechargeSuccess] = useState<boolean>(false);
+  const [isWaitingForPin, setIsWaitingForPin] = useState<boolean>(false);
+  const [countdown, setCountdown] = useState<number>(60);
   const [copiedText, setCopiedText] = useState<string>('');
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isWaitingForPin && countdown > 0) {
+      timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [isWaitingForPin, countdown]);
 
   const triggerConfetti = () => {
     confetti({
@@ -99,34 +116,53 @@ export default function WalletDemoModal({ isOpen, onClose, driverName = "Karak J
   };
 
   // Quick recharge logic
-  const handleRechargeSubmit = (e: React.FormEvent) => {
+  const handleRechargeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amountNum = parseFloat(rechargeAmount);
     if (isNaN(amountNum) || amountNum <= 0) return;
+    if (!profile) return; // User must be logged in
 
     setRechargeSuccess(true);
-    setTimeout(() => {
-      setWalletBalance(prev => prev + amountNum);
-      const gatewayLabel = 
-        selectedMethod === 'easypaisa' ? 'Easypaisa' : 
-        selectedMethod === 'jazzcash' ? 'JazzCash' : 
-        selectedMethod === 'nayapay' ? 'NayaPay' : 'Bank Transfer';
-      
-      const newTx = {
-        id: Date.now().toString(),
-        type: 'recharge' as const,
+    
+    try {
+      const gatewayLabel = selectedMethod === 'easypaisa' ? 'Easypaisa' : 
+        selectedMethod === 'jazzcash' ? 'JazzCash' : 'NayaPay';
+
+      // Submit payment request
+      await addDoc(collection(db, 'paymentRequests'), {
+        userId: profile.uid,
+        userDisplayName: profile.displayName || 'Unknown User',
+        userEmail: profile.email || '',
         amount: amountNum,
-        title: `Recharge via ${gatewayLabel}`,
-        date: 'Abhi abhi',
-        status: 'success' as const
-      };
-      setTransactions(prev => [newTx, ...prev]);
+        method: gatewayLabel,
+        txnId: txnReferenceId,
+        status: 'pending',
+        timestamp: serverTimestamp()
+      });
+
+      // Admin Notification
+      await addDoc(collection(db, 'notifications'), {
+        userId: 'admin', // target role
+        title: 'New Recharge Request',
+        body: `${profile.displayName} ne Rs. ${amountNum} ka recharge request bheja hai via ${gatewayLabel}.`,
+        read: false,
+        timestamp: serverTimestamp(),
+        type: 'payment'
+      });
+
       setShowRechargeDialog(false);
       setRechargeSuccess(false);
       setTxnReferenceId('');
       setBankReceiptUploaded(false);
-      triggerConfetti();
-    }, 1800);
+      
+      // Instead of direct balance add, we show success modal or alert
+      alert('Aapki recharge request Admin ko bhej di gayi hai. Approve hone par balance add ho jayega.');
+
+    } catch (error) {
+      console.error("Error submitting recharge:", error);
+      alert('Koi error aagaya, please dubara try karein.');
+      setRechargeSuccess(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -167,7 +203,10 @@ export default function WalletDemoModal({ isOpen, onClose, driverName = "Karak J
               <div className="absolute right-0 top-0 w-32 h-32 bg-emerald-100/10 rounded-full -mr-10 -mt-10 pointer-events-none" />
               
               <div className="flex justify-between items-center text-slate-500 text-xs font-bold uppercase tracking-wider">
-                <span>Current Pass Credit Balance</span>
+                <div className="flex flex-col">
+                  <span className="text-sm">Paid This Month</span>
+                  <span className="text-[10px] normal-case font-semibold tracking-normal mt-0.5">(Es Mahinay adaa ki gae Raqam)</span>
+                </div>
               </div>
 
               <div className="flex items-baseline gap-1">
@@ -197,33 +236,27 @@ export default function WalletDemoModal({ isOpen, onClose, driverName = "Karak J
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
-                  <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Monthly Flat Fee</span>
+                  <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Mahaana Raqam</span>
                   <span className="text-lg font-black text-slate-800 mt-1">Rs. 500 PKR</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100 flex flex-col justify-between">
-                  <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider">Paid This Month</span>
+                  <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider">Adaa ki gae Raqam</span>
                   <span className="text-lg font-black text-emerald-900 mt-1">Rs. {paidFeeAmount} PKR</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-100 flex flex-col justify-between">
-                  <span className="text-[11px] font-black text-amber-700 uppercase tracking-wider">Remaining Dues</span>
+                  <span className="text-[11px] font-black text-amber-700 uppercase tracking-wider">Baqaaya Raqam</span>
                   <span className="text-lg font-black text-amber-900 mt-1">Rs. {flatFeeDues} PKR</span>
                 </div>
               </div>
 
               {flatFeeDues > 0 ? (
-                <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                <div className="pt-2 flex flex-col gap-3">
                   <Button 
-                    onClick={() => handlePayCompanyFlatFee(100)}
-                    className="flex-1 py-4 rounded-2xl text-xs sm:text-sm font-black text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 flex items-center justify-center gap-2"
+                    onClick={() => setShowRechargeDialog(true)}
+                    className="flex-1 py-4.5 rounded-2xl text-xs sm:text-sm font-black text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-md border-none flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:scale-[1.01]"
                   >
-                    Pay Rs. 100 Qist (Installment)
-                  </Button>
-                  <Button 
-                    onClick={() => handlePayCompanyFlatFee(flatFeeDues)}
-                    className="flex-1 py-4 rounded-2xl text-xs sm:text-sm font-black text-white bg-slate-900 hover:bg-slate-800 shadow-md border-none flex items-center justify-center gap-2"
-                  >
-                    Transfer Full Rs. {flatFeeDues} to Company
-                    <ArrowRight className="w-4 h-4" />
+                    <PlusCircle className="w-5 h-5" />
+                    Fauri Recharge
                   </Button>
                 </div>
               ) : (
@@ -271,12 +304,16 @@ export default function WalletDemoModal({ isOpen, onClose, driverName = "Karak J
                   </button>
                 </div>
 
+                <div className="bg-emerald-50 text-emerald-800 text-xs font-bold p-3.5 rounded-xl border border-emerald-200">
+                  Database Charges aur System Maintenance k lye amount jama kren taakeh Poora System smoothly chalta rahay.
+                </div>
+
                 <form onSubmit={handleRechargeSubmit} className="space-y-5">
                   
                   {/* Select Channel */}
                   <div className="space-y-2.5">
                     <label className="text-[11px] font-black uppercase text-slate-400 block">Select Gateway Payment Channel</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() => setSelectedMethod('easypaisa')}
@@ -298,151 +335,103 @@ export default function WalletDemoModal({ isOpen, onClose, driverName = "Karak J
                       >
                         NayaPay
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedMethod('bank')}
-                        className={`py-3 px-1.5 rounded-xl text-[11px] font-black border transition-all flex items-center justify-center gap-1.5 ${selectedMethod === 'bank' ? 'bg-violet-50 border-violet-400 text-violet-700 font-bold shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}
-                      >
-                        <Building2 className="w-3.5 h-3.5" />
-                        Bank Account
-                      </button>
                     </div>
                   </div>
 
-                  {/* Predefined Amounts & Custom Choice Box */}
-                  <div className="space-y-3">
-                    <label className="text-[11px] font-black uppercase text-slate-400 block">Choose or Enter Recharge Amount</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['100', '200', '500'].map((amt) => (
-                        <button
-                          key={amt}
-                          type="button"
-                          onClick={() => setRechargeAmount(amt)}
-                          className={`py-2 rounded-xl text-xs font-black border transition-all ${rechargeAmount === amt ? 'bg-blue-600 border-blue-600 text-white font-extrabold' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  {/* Escrow Account Info Box */}
+                  <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-200 space-y-4 mt-4">
+                    <div className="text-xs font-bold text-slate-500 leading-snug">
+                      Apne EasyTravel Digital Wallet me balance jama karne ke liye niche diye gae EasyTravel Founder k Account me transfer karein:
+                    </div>
+                    
+                    <div className="space-y-3 bg-white p-3.5 rounded-xl border border-slate-100 text-xs text-slate-700 font-mono">
+                      <div className="flex justify-between items-center">
+                        <span>Account Type: <strong className="uppercase">{selectedMethod}</strong></span>
+                      </div>
+                      <div className="flex justify-between items-center border-t border-slate-50 pt-2">
+                        <span>Account: <strong>03129214312</strong></span>
+                        <button 
+                          type="button" 
+                          onClick={() => handleCopyText('03129214312', 'acc')}
+                          className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-800"
                         >
-                          Rs. {amt}
+                          {copiedText === 'acc' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
-                      ))}
+                      </div>
+                      <div className="flex justify-between items-center border-t border-slate-50 pt-2">
+                        <span>Title: <strong>Munir Ahmad (EasyTravel Founder's Account)</strong></span>
+                      </div>
                     </div>
 
-                    <div className="relative mt-2">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <span className="text-slate-400 text-xs font-bold font-mono">Rs.</span>
+                    {/* Amount Input Box */}
+                    <div className="space-y-3">
+                      <div className="text-emerald-700 font-bold text-xs bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-center shadow-sm leading-relaxed">
+                        Amount Transfer krne k baad apni amount neche box me enter kren aur proceed kren
                       </div>
-                      <input
-                        type="number"
-                        value={rechargeAmount}
-                        onChange={(e) => setRechargeAmount(e.target.value)}
-                        placeholder="Apni marzi ka amount likhein (e.g. 150, 1000)"
-                        className="w-full text-xs font-black pl-10 pr-3.5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-sans shadow-inner shrink-0"
-                        min="1"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* conditional options for bank transfer vs mobile wallets */}
-                  {selectedMethod === 'bank' ? (
-                    <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-200 space-y-4">
-                      <div className="text-xs font-bold text-slate-500 leading-snug">
-                        Apne EasyTravel Digital Wallet me balance jama karne ke liye niche diye gae Escrow Account me transfer karein:
-                      </div>
-                      
-                      <div className="space-y-3 bg-white p-3.5 rounded-xl border border-slate-100 text-xs text-slate-700 font-mono">
-                        <div className="flex justify-between items-center">
-                          <span>Bank: <strong>Meezan Bank Ltd</strong></span>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                          <span className="text-slate-400 text-xs font-bold font-mono">Rs.</span>
                         </div>
-                        <div className="flex justify-between items-center border-t border-slate-50 pt-2">
-                          <span>Account: <strong>1234-5678-9101-23</strong></span>
-                          <button 
-                            type="button" 
-                            onClick={() => handleCopyText('1234-5678-9101-23', 'acc')}
-                            className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-800"
-                          >
-                            {copiedText === 'acc' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                        <div className="flex justify-between items-center border-t border-slate-50 pt-2">
-                          <span>Title: <strong>EasyTravel Private Ltd</strong></span>
-                        </div>
-                        <div className="flex justify-between items-center border-t border-slate-50 pt-2 font-sans font-bold text-slate-500 text-[10px]">
-                          <span>IBAN: PK64MEZN000123456789101</span>
-                          <button 
-                            type="button" 
-                            onClick={() => handleCopyText('PK64MEZN000123456789101', 'iban')}
-                            className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-800"
-                          >
-                            {copiedText === 'iban' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Manual verification upload simulate */}
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-black uppercase text-slate-400 block">Transfer verification info</label>
-                        <input 
-                          type="text" 
-                          placeholder="Transaction Receipt ID (TID / Reference) likhein"
-                          value={txnReferenceId}
-                          onChange={(e) => setTxnReferenceId(e.target.value)}
-                          className="w-full text-xs font-black p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-mono"
+                        <input
+                          type="number"
+                          value={rechargeAmount}
+                          onChange={(e) => setRechargeAmount(e.target.value)}
+                          placeholder="Enter Your Amount"
+                          className="w-full text-xs font-normal pl-10 pr-3.5 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-sans shadow-inner shrink-0 text-slate-500"
+                          min="1"
                           required
                         />
-
-                        <div className="flex items-center gap-2 mt-1">
-                          <input 
-                            type="checkbox" 
-                            id="receipt_check" 
-                            checked={bankReceiptUploaded}
-                            onChange={(e) => setBankReceiptUploaded(e.target.checked)}
-                            className="rounded text-blue-600 cursor-pointer h-4 w-4"
-                            required
-                          />
-                          <label htmlFor="receipt_check" className="text-[11px] text-slate-500 font-bold cursor-pointer select-none">
-                            Maine safe mobile app se paise transfer kar diye hain.
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="text-[10px] bg-amber-50 text-amber-800 p-3 rounded-xl border border-amber-200 font-sans leading-relaxed font-semibold">
-                        🔒 <strong>Polices Advice:</strong> Manual Bank Transfer ke zariye <strong>kisi kisam ki direct debit approval, banking policy restrictions ya security signature issues</strong> pesh nahi aate! Driver asani se transfer karta hai aur hamara system check kar ke background active approve karta hai.
                       </div>
                     </div>
-                  ) : (
-                    /* Custom Number Input for Mobile Wallets */
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-black uppercase text-slate-400 block">Mobile Wallet Account Phone Number</label>
+
+                    {/* Manual verification upload */}
+                    <div className="space-y-2 mt-4">
+                      <label className="text-[11px] font-black uppercase text-slate-400 block">Transaction Verification</label>
                       <input 
-                        type="tel" 
-                        value={rechargeMobileNum}
-                        onChange={(e) => setRechargeMobileNum(e.target.value)}
-                        placeholder="03xxxxxxxxxx"
-                        className="w-full text-xs font-black p-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 font-mono tracking-wider" 
+                        type="text" 
+                        placeholder="Transaction ID (TID) yaha paste kren"
+                        value={txnReferenceId}
+                        onChange={(e) => setTxnReferenceId(e.target.value)}
+                        className="w-full text-[10px] sm:text-xs font-black p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-mono"
                         required
                       />
+
+                      <div className="flex items-center gap-2 mt-1">
+                        <input 
+                          type="checkbox" 
+                          id="receipt_check" 
+                          checked={bankReceiptUploaded}
+                          onChange={(e) => setBankReceiptUploaded(e.target.checked)}
+                          className="rounded text-blue-600 cursor-pointer h-4 w-4"
+                          required
+                        />
+                        <label htmlFor="receipt_check" className="text-[11px] text-slate-500 font-bold cursor-pointer select-none">
+                          Maine safe mobile app se paise transfer kar diye hain.
+                        </label>
+                      </div>
                     </div>
-                  )}
+                  </div>
 
                   {/* Submission and loading indicator */}
                   <div className="pt-2">
                     <Button
                       type="submit"
-                      disabled={rechargeSuccess}
-                      className="w-full py-5 rounded-2xl font-bold text-xs sm:text-sm text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 border-none flex items-center justify-center gap-2 h-10 cursor-pointer shadow-md disabled:opacity-50"
+                      disabled={rechargeSuccess || !txnReferenceId || !bankReceiptUploaded || !rechargeAmount || parseFloat(rechargeAmount) <= 0}
+                      className={`w-full py-5 rounded-2xl font-bold text-xs sm:text-sm text-white flex items-center justify-center gap-2 h-10 shadow-md transition-all ${(!txnReferenceId || !bankReceiptUploaded || !rechargeAmount || parseFloat(rechargeAmount) <= 0) ? 'bg-slate-300 opacity-60 cursor-not-allowed' : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 cursor-pointer'}`}
                     >
                       {rechargeSuccess ? (
                         <span className="flex items-center gap-2">
                           <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Processing Transaction Pin...
+                          Processing Transaction...
                         </span>
                       ) : (
-                        `Confirm Recharge of Rs. ${rechargeAmount}`
+                        `Confirm Recharge${rechargeAmount ? ` of Rs. ${rechargeAmount}` : ''}`
                       )}
                     </Button>
                   </div>
 
                   <p className="text-[9.5px] text-slate-400 text-center font-medium leading-normal">
-                    🔒 SSL Secure Demo Sandbox. Real money will not be collected or altered during this preview session.
+                    🔒 SSL Secured Transaction. Aapki payment tafseelat mehfooz hain.
                   </p>
                 </form>
               </motion.div>

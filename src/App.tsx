@@ -21,7 +21,7 @@ import {
   getCountFromServer
 } from 'firebase/firestore';
 import { getMessaging, getToken, isSupported } from 'firebase/messaging';
-import { UserProfile, Ride, RideRequest, ChatMessage, Complaint, Analytics, Warning, Booking } from './types';
+import { UserProfile, Ride, RideRequest, ChatMessage, Complaint, Analytics, Warning, Booking, WalletRechargeRequest } from './types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -81,7 +81,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import confetti from 'canvas-confetti';
 import LaunchSignInScreen from './components/LaunchSignInScreen';
-import WalletDemoModal from './components/WalletDemoModal';
+import WalletModal from './components/WalletModal';
 
 const trackInteraction = async (rideId: string, type: 'call' | 'whatsapp' | 'chat', collectionName: 'rides' | 'rideRequests') => {
   try {
@@ -483,9 +483,7 @@ export default function App() {
           where(userIdField, '==', user.uid),
           where('finalStatus', '==', 'pending')
         );
-        
-        const snap = await getDoc(doc(db, 'dummy', 'dummy')); // Just to trigger a read check if needed, but we use onSnapshot or getDocs
-        // Actually, we can just use a simple query
+        // We will just rely on the real-time listeners below for pending reports
       }
     };
     
@@ -845,6 +843,40 @@ export default function App() {
       Notification.requestPermission();
     }
 
+    // New Custom Notifications Collection
+    let initUserNotifs = true;
+    const unsubUserNotifs = onSnapshot(
+      query(collection(db, 'notifications'), where('userId', '==', user.uid), where('read', '==', false)),
+      (snapshot) => {
+        if (initUserNotifs) { initUserNotifs = false; return; }
+        snapshot.docChanges().forEach(async (change) => {
+          if (change.type === 'added') {
+            const notif = change.doc.data();
+            showNotification(notif.title, { body: notif.body, tag: `sys-notif-${change.doc.id}` });
+            await updateDoc(doc(db, 'notifications', change.doc.id), { read: true });
+          }
+        });
+      }, (error) => console.error("Error fetching user notifications: ", error)
+    );
+
+    let unsubAdminNotifs = () => {};
+    if (profile.role === 'admin') {
+      let initAdminNotifs = true;
+      unsubAdminNotifs = onSnapshot(
+        query(collection(db, 'notifications'), where('userId', '==', 'admin'), where('read', '==', false)),
+        (snapshot) => {
+          if (initAdminNotifs) { initAdminNotifs = false; return; }
+          snapshot.docChanges().forEach(async (change) => {
+            if (change.type === 'added') {
+              const notif = change.doc.data();
+              showNotification(notif.title, { body: notif.body, tag: `sys-notif-${change.doc.id}` });
+              await updateDoc(doc(db, 'notifications', change.doc.id), { read: true });
+            }
+          });
+        }, (error) => console.error("Error fetching admin notifications: ", error)
+      );
+    }
+
     // 1. Listen for new ride requests (for drivers)
     const qNewRequests = query(
       collection(db, 'rideRequests'),
@@ -1057,6 +1089,8 @@ export default function App() {
       unsubAdminComplaints();
       unsubAdminWarnings();
       unsubBookings();
+      unsubUserNotifs();
+      unsubAdminNotifs();
     };
   }, [user, profile]);
 
@@ -2071,9 +2105,14 @@ function RegistrationForm({ user, role: initialRole, setView, setProfile, onClos
       }
     } catch (error: any) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      if (errMsg.includes('auth/popup-closed-by-user') || (error && error.code === 'auth/popup-closed-by-user')) {
+      if (
+        errMsg.includes('auth/popup-closed-by-user') || 
+        errMsg.includes('auth/popup-blocked') || 
+        (error && error.code === 'auth/popup-closed-by-user') ||
+        (error && error.code === 'auth/popup-blocked')
+      ) {
         toast.warning(
-          "Sign-in popup band kar diya gaya. Agar aap login nahi kar pa rahe hain, to please application ke top bar par 'Open in New Tab' button par click kar ke try karein.",
+          "Popup block ho gaya! Iframe/Preview restriction ki wajah se. Ise fix karne ke liye app ko 'New Tab' me open karein (top right arrow icon se) aur wahan se sign in karein.",
           { duration: 8000 }
         );
       } else {
@@ -2463,7 +2502,7 @@ function Dashboard({
   const [autoActive, setAutoActive] = useState(false);
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [showGpsModal, setShowGpsModal] = useState(false);
-  const [showWalletDemo, setShowWalletDemo] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
   const [now, setNow] = useState(new Date());
 
   const [selfOrigin, setSelfOrigin] = useState('Karak City');
@@ -2646,7 +2685,7 @@ function Dashboard({
             {/* Compact Smart Wallet Button (Only for Car Owner / Driver) */}
             {userRole === 'driver' && (
               <button 
-                onClick={() => setShowWalletDemo(true)}
+                onClick={() => setShowWalletModal(true)}
                 className="flex items-center gap-1.5 h-9 px-3.5 text-xs font-black rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 shadow-xs cursor-pointer active:scale-95 transition-all shrink-0 select-none ml-auto"
               >
                 <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs">
@@ -3092,11 +3131,12 @@ function Dashboard({
       </div>
       <AdSlot label="Dashboard Ad" />
 
-      {/* Wallet Demo Modal for commission & loyalty visualization */}
-      <WalletDemoModal 
-        isOpen={showWalletDemo} 
-        onClose={() => setShowWalletDemo(false)} 
+      {/* Wallet Modal for commission & loyalty visualization */}
+      <WalletModal 
+        isOpen={showWalletModal} 
+        onClose={() => setShowWalletModal(false)} 
         driverName={profile?.displayName || "Karak Jan"} 
+        profile={profile}
       />
     </div>
   );
@@ -5025,9 +5065,16 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
   const [isCleaning, setIsCleaning] = useState(false);
 
   const [allRequests, setAllRequests] = useState<RideRequest[]>([]);
+  const [paymentRequests, setPaymentRequests] = useState<WalletRechargeRequest[]>([]);
+  const [paymentTab, setPaymentTab] = useState<'pending' | 'approved'>('pending');
 
   useEffect(() => {
     // Real-time stats and lists
+    const unsubPayments = onSnapshot(query(collection(db, 'paymentRequests'), orderBy('timestamp', 'desc')), (snap) => {
+      setPaymentRequests(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as WalletRechargeRequest)));
+    }, (error) => {
+      console.error("Error fetching paymentRequests: ", error);
+    });
     const unsubDrivers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'driver')), (snap) => {
       setStats(prev => ({ ...prev, drivers: snap.size }));
       setDrivers(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
@@ -5078,6 +5125,7 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
     });
 
     return () => {
+      unsubPayments();
       unsubDrivers();
       unsubPassengers();
       unsubRides();
@@ -5190,8 +5238,9 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="flex w-full overflow-x-auto whitespace-nowrap mb-4 gap-2 border-b border-slate-100 pb-2">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger>
           <TabsTrigger value="drivers">Owners</TabsTrigger>
           <TabsTrigger value="passengers">Pass.</TabsTrigger>
           <TabsTrigger value="rides">Rides</TabsTrigger>
@@ -5199,6 +5248,154 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
           <TabsTrigger value="complaints">Compl.</TabsTrigger>
           <TabsTrigger value="warnings">Warn.</TabsTrigger>
         </TabsList>
+        <TabsContent value="payments" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold flex justify-between items-center">
+                <span>Wallet Recharges</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-2 mb-4">
+                <Button 
+                  variant={paymentTab === 'pending' ? 'default' : 'outline'} 
+                  size="sm" 
+                  onClick={() => setPaymentTab('pending')}
+                  className="rounded-full"
+                >
+                  Pending ({paymentRequests.filter(p => p.status === 'pending').length})
+                </Button>
+                <Button 
+                  variant={paymentTab === 'approved' ? 'default' : 'outline'} 
+                  size="sm" 
+                  onClick={() => setPaymentTab('approved')}
+                  className="rounded-full"
+                >
+                  Approved ({paymentRequests.filter(p => p.status === 'approved').length})
+                </Button>
+              </div>
+
+              {/* Stats overview (Total requests, Total Amount) */}
+              <div className="grid grid-cols-3 gap-2 mb-4 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                <div className="text-center p-2 bg-white rounded shadow-sm">
+                  <p className="text-[9px] uppercase font-bold text-slate-400 mb-1">Today</p>
+                  <p className="text-xs font-black text-emerald-600">
+                    Rs. {paymentRequests.filter(p => p.status === 'approved' && p.timestamp && new Date(p.timestamp.toDate()).toDateString() === new Date().toDateString()).reduce((acc, curr) => acc + curr.amount, 0)}
+                  </p>
+                  <p className="text-[9px] font-bold text-slate-500 mt-1">
+                    {paymentRequests.filter(p => p.status === 'approved' && p.timestamp && new Date(p.timestamp.toDate()).toDateString() === new Date().toDateString()).length} Reqs
+                  </p>
+                </div>
+                <div className="text-center p-2 bg-white rounded shadow-sm">
+                  <p className="text-[9px] uppercase font-bold text-slate-400 mb-1">This Month</p>
+                  <p className="text-xs font-black text-emerald-600">
+                    Rs. {paymentRequests.filter(p => p.status === 'approved' && p.timestamp && new Date(p.timestamp.toDate()).getMonth() === new Date().getMonth() && new Date(p.timestamp.toDate()).getFullYear() === new Date().getFullYear()).reduce((acc, curr) => acc + curr.amount, 0)}
+                  </p>
+                  <p className="text-[9px] font-bold text-slate-500 mt-1">
+                    {paymentRequests.filter(p => p.status === 'approved' && p.timestamp && new Date(p.timestamp.toDate()).getMonth() === new Date().getMonth() && new Date(p.timestamp.toDate()).getFullYear() === new Date().getFullYear()).length} Reqs
+                  </p>
+                </div>
+                <div className="text-center p-2 bg-white rounded shadow-sm">
+                  <p className="text-[9px] uppercase font-bold text-slate-400 mb-1">Total</p>
+                  <p className="text-xs font-black text-emerald-600">
+                    Rs. {paymentRequests.filter(p => p.status === 'approved').reduce((acc, curr) => acc + curr.amount, 0)}
+                  </p>
+                  <p className="text-[9px] font-bold text-slate-500 mt-1">
+                    {paymentRequests.filter(p => p.status === 'approved').length} Reqs
+                  </p>
+                </div>
+              </div>
+
+              <ScrollArea className="h-[400px]">
+                <div className="space-y-3 pr-4">
+                  {paymentRequests.filter(p => p.status === paymentTab).length === 0 ? (
+                    <p className="text-sm text-slate-500 text-center py-4">Koi {paymentTab} request nahi hai.</p>
+                  ) : (
+                    paymentRequests.filter(p => p.status === paymentTab).map((req) => (
+                      <div key={req.id} className="p-3 border rounded-lg bg-white shadow-sm flex flex-col gap-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-bold text-sm text-slate-800">{req.userDisplayName}</p>
+                            <p className="text-xs text-slate-500">{req.method.toUpperCase()} - {req.txnId}</p>
+                            <p className="text-[10px] text-slate-400">{req.timestamp ? new Date(req.timestamp.toDate()).toLocaleString() : 'Just now'}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-black text-emerald-600 text-base">Rs. {req.amount}</p>
+                            <Badge variant="outline" className={req.status === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}>
+                              {req.status}
+                            </Badge>
+                          </div>
+                        </div>
+                        {req.status === 'pending' && (
+                          <div className="flex gap-2 justify-end mt-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50 text-xs h-7"
+                              onClick={async () => {
+                                if(window.confirm('Request decline karna chahte hain?')) {
+                                  await updateDoc(doc(db, 'paymentRequests', req.id), { status: 'declined' });
+                                  await addDoc(collection(db, 'notifications'), {
+                                    userId: req.userId,
+                                    title: 'Recharge Declined',
+                                    body: `Aapki Rs. ${req.amount} ki recharge request decline ho gayi hai.`,
+                                    read: false,
+                                    timestamp: serverTimestamp(),
+                                    type: 'payment'
+                                  });
+                                }
+                              }}
+                            >
+                              Decline
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7"
+                              onClick={async () => {
+                                if(window.confirm('Rs. ' + req.amount + ' approve karna chahte hain?')) {
+                                  // Update request status
+                                  await updateDoc(doc(db, 'paymentRequests', req.id), { status: 'approved' });
+                                  
+                                  // Update user balance (increment)
+                                  const userDocRef = doc(db, 'users', req.userId);
+                                  // we don't have increment imported, so we will use a transaction or simply update based on fetched user doc
+                                  // but since we might not have 'increment' from firestore, let's fetch the user first
+                                  try {
+                                    const { getDoc } = await import('firebase/firestore');
+                                    const userSnap = await getDoc(userDocRef);
+                                    if(userSnap.exists()) {
+                                      const currentBalance = userSnap.data().walletBalance || 0;
+                                      await updateDoc(userDocRef, { walletBalance: currentBalance + req.amount });
+                                    }
+                                  } catch (e) { console.error(e) }
+                                  
+                                  // Send notification to user
+                                  await addDoc(collection(db, 'notifications'), {
+                                    userId: req.userId,
+                                    title: 'Recharge Approved!',
+                                    body: `Aapke wallet me Rs. ${req.amount} jama kar diye gaye hain.`,
+                                    read: false,
+                                    timestamp: serverTimestamp(),
+                                    type: 'payment'
+                                  });
+                                  
+                                  toast.success("Payment approved aur balance add kar diya gaya.");
+                                }
+                              }}
+                            >
+                              Approve & Add Balance
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="overview" className="mt-4 space-y-4">
           <Card className="border-red-100 bg-red-50/30">
             <CardHeader className="pb-2">
