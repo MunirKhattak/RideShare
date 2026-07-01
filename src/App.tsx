@@ -2361,6 +2361,13 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
     photoURL: profile?.photoURL || ''
   });
 
+  const [editRoleGroup, setEditRoleGroup] = useState<'vehicle_owner' | 'passenger'>(
+    profile?.role === 'driver' ? 'vehicle_owner' : 'passenger'
+  );
+  const [editVehicleType, setEditVehicleType] = useState<'Car' | 'Bike'>(
+    profile?.vehicleType || 'Car'
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !profile) return;
@@ -2379,6 +2386,8 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
         photoURL: formData.photoURL,
         phoneNumber: formData.whatsappNumber, // Use WhatsApp number as phone number
         whatsappNumber: formData.whatsappNumber,
+        role: editRoleGroup === 'passenger' ? 'passenger' : 'driver',
+        vehicleType: editRoleGroup === 'vehicle_owner' ? editVehicleType : undefined,
         bio: formData.bio,
       };
       await updateDoc(doc(db, 'users', user.uid), updatedProfile as any);
@@ -2399,7 +2408,7 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
         <h2 className="text-xl font-bold">Edit Profile</h2>
       </div>
 
-      <Card className="max-w-md mx-auto">
+      <Card className="max-w-md mx-auto border border-slate-100 shadow-xl rounded-3xl overflow-hidden bg-white">
         <CardHeader>
           <CardTitle>Profile Edit Karein</CardTitle>
           <CardDescription>Apni maloomat ko yahan update karein</CardDescription>
@@ -2420,8 +2429,6 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      // In a real app, you would upload this to Firebase Storage
-                      // For now, we'll set a placeholder or handle it
                       toast.info("Gallery upload feature is ready to be linked to Firebase Storage.");
                     }
                   }}
@@ -2450,6 +2457,71 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
                 onChange={e => setFormData({...formData, whatsappNumber: e.target.value})} 
                 placeholder="03xx-xxxxxxx"
               />
+            </div>
+
+            {/* Role & Vehicle Selection in Edit Profile */}
+            <div className="space-y-3 pt-1">
+              <Label className="text-sm font-bold text-slate-700">Role & Vehicle Selection</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <Button 
+                  type="button"
+                  variant={editRoleGroup === 'vehicle_owner' ? 'default' : 'outline'}
+                  className={`h-11 rounded-xl text-xs font-bold transition-all border-slate-200 ${
+                    editRoleGroup === 'vehicle_owner' 
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white border-none shadow-md' 
+                      : 'bg-transparent text-slate-600 hover:bg-slate-50'
+                  }`}
+                  onClick={() => setEditRoleGroup('vehicle_owner')}
+                >
+                  <Car className="w-3.5 h-3.5 mr-1" /> Vehicle Owner
+                </Button>
+                
+                <Button 
+                  type="button"
+                  variant={editRoleGroup === 'passenger' ? 'default' : 'outline'}
+                  className={`h-11 rounded-xl text-xs font-bold transition-all border-slate-200 ${
+                    editRoleGroup === 'passenger' 
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white border-none shadow-md' 
+                      : 'bg-transparent text-slate-600 hover:bg-slate-50'
+                  }`}
+                  onClick={() => setEditRoleGroup('passenger')}
+                >
+                  <UserIcon className="w-3.5 h-3.5 mr-1" /> Passenger
+                </Button>
+              </div>
+
+              {editRoleGroup === 'vehicle_owner' && (
+                <div className="space-y-1.5 p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                  <Label className="text-slate-500 text-[10px] font-extrabold uppercase tracking-wider block">Vehicle Type</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button 
+                      type="button"
+                      variant={editVehicleType === 'Car' ? 'default' : 'outline'}
+                      className={`h-9 rounded-lg text-[11px] font-bold transition-all border-slate-200 ${
+                        editVehicleType === 'Car' 
+                          ? 'bg-slate-900 hover:bg-slate-800 text-white border-none shadow-sm' 
+                          : 'bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                      onClick={() => setEditVehicleType('Car')}
+                    >
+                      <Car className="w-3 h-3 mr-1" /> Car Owner
+                    </Button>
+                    
+                    <Button 
+                      type="button"
+                      variant={editVehicleType === 'Bike' ? 'default' : 'outline'}
+                      className={`h-9 rounded-lg text-[11px] font-bold transition-all border-slate-200 ${
+                        editVehicleType === 'Bike' 
+                          ? 'bg-slate-900 hover:bg-slate-800 text-white border-none shadow-sm' 
+                          : 'bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                      onClick={() => setEditVehicleType('Bike')}
+                    >
+                      <Bike className="w-3 h-3 mr-1" /> Bike Owner
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -3365,6 +3437,97 @@ function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick, travelSc
     });
   };
 
+  const renderResultsUI = () => (
+    <>
+      {searchHistory.length > 0 && !hasSearched && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-slate-500">Pichli Searches (Recent Searches):</h3>
+          <div className="flex flex-wrap gap-2">
+            {searchHistory.map((h, idx) => (
+              <Badge 
+                key={idx} 
+                variant="secondary" 
+                className="cursor-pointer hover:bg-slate-200 px-3 py-1.5"
+                onClick={() => {
+                  const newData = { ...searchData, origin: h.origin, destination: h.destination };
+                  setSearchData(newData);
+                  handleSearch(undefined, newData);
+                }}
+              >
+                <Search className="w-3 h-3 mr-1" />
+                {h.origin || 'Any'} se {h.destination || 'Any'}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hasSearched && (
+        <div className="space-y-4">
+          <h3 className="font-bold text-lg border-b pb-2">Results:</h3>
+          {results.length === 0 ? (
+            <EmptyState message={userRole === 'driver' ? "Filhal koi Passenger available nahi hai." : "Filhal koi Driver available nahi hai."} />
+          ) : (
+            <div className="space-y-4">
+              {results.map((item) => (
+                <div key={item.id}>
+                  <Card className="hover:border-blue-400 cursor-pointer" onClick={() => setView('profile_view', item)}>
+                    <CardHeader className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarImage src={item.driverPhoto || item.passengerPhoto} />
+                            <AvatarFallback>U</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <CardTitle className="text-base">{item.driverName || item.passengerName}</CardTitle>
+                            <CardDescription>{item.date} | {item.time}</CardDescription>
+                          </div>
+                        </div>
+                        {item.price && <div className="font-bold text-blue-600">Rs. {item.price}</div>}
+                      </div>
+                    </CardHeader>
+                    <CardFooter className="p-3 bg-slate-50/50 flex flex-col gap-2">
+                      <Button 
+                        className="w-full bg-slate-900 hover:bg-black text-white font-black rounded-xl h-12 shadow-lg shadow-slate-200 transition-all active:scale-95" 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          onBookClick(item); 
+                        }}
+                      >
+                        {item.driverId ? 'Book Your Seat' : 'Book Passenger'}
+                      </Button>
+                      <div className="flex gap-2 w-full">
+                        <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-blue-600 border-blue-100 bg-blue-50/50 hover:bg-blue-100" onClick={(e) => { 
+                          e.stopPropagation(); 
+                          trackInteraction(item.id, 'chat', userRole === 'driver' ? 'rideRequests' : 'rides');
+                          setView('chat', item); 
+                        }}><MessageSquare className="w-3 h-3" /> Chat</Button>
+                        <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-green-600 border-green-100 bg-green-50/50 hover:bg-green-100" onClick={(e) => { 
+                          e.stopPropagation(); 
+                          trackInteraction(item.id, 'whatsapp', userRole === 'driver' ? 'rideRequests' : 'rides');
+                          onWhatsAppClick(item); 
+                        }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
+                        <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-slate-600 border-slate-200 bg-white hover:bg-slate-50" onClick={(e) => { 
+                          e.stopPropagation(); 
+                          trackInteraction(item.id, 'call', userRole === 'driver' ? 'rideRequests' : 'rides');
+                          window.open(`tel:${item.whatsappNumber}`, '_self'); 
+                        }}><Phone className="w-3 h-3" /> Call</Button>
+                      </div>
+                    </CardFooter>
+                  </Card>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="pt-4 border-t border-slate-100">
+            <AdSlot label="Search Results Ad" />
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   if (isIntracity) {
     const handleDistrictChange = (d: string) => {
       setSearchData(prev => ({
@@ -3525,6 +3688,7 @@ function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick, travelSc
             </form>
           </CardContent>
         </Card>
+        {renderResultsUI()}
       </div>
     );
   }
@@ -3581,93 +3745,8 @@ function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick, travelSc
           </form>
         </CardContent>
       </Card>
-
-      {searchHistory.length > 0 && !hasSearched && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-slate-500">Pichli Searches (Recent Searches):</h3>
-          <div className="flex flex-wrap gap-2">
-            {searchHistory.map((h, idx) => (
-              <Badge 
-                key={idx} 
-                variant="secondary" 
-                className="cursor-pointer hover:bg-slate-200 px-3 py-1.5"
-                onClick={() => {
-                  const newData = { ...searchData, origin: h.origin, destination: h.destination };
-                  setSearchData(newData);
-                  handleSearch(undefined, newData);
-                }}
-              >
-                <Search className="w-3 h-3 mr-1" />
-                {h.origin || 'Any'} se {h.destination || 'Any'}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hasSearched && (
-        <div className="space-y-4">
-          <h3 className="font-bold text-lg border-b pb-2">Results:</h3>
-          {results.length === 0 ? (
-            <EmptyState message="Filhal koi post nahi mili." />
-          ) : (
-            <div className="space-y-4">
-              {results.map((item) => (
-                <div key={item.id}>
-                  <Card className="hover:border-blue-400 cursor-pointer" onClick={() => setView('profile_view', item)}>
-                    <CardHeader className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarImage src={item.driverPhoto || item.passengerPhoto} />
-                            <AvatarFallback>U</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <CardTitle className="text-base">{item.driverName || item.passengerName}</CardTitle>
-                            <CardDescription>{item.date} | {item.time}</CardDescription>
-                          </div>
-                        </div>
-                        {item.price && <div className="font-bold text-blue-600">Rs. {item.price}</div>}
-                      </div>
-                    </CardHeader>
-                    <CardFooter className="p-3 bg-slate-50/50 flex flex-col gap-2">
-                      <Button 
-                        className="w-full bg-slate-900 hover:bg-black text-white font-black rounded-xl h-12 shadow-lg shadow-slate-200 transition-all active:scale-95" 
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          onBookClick(item); 
-                        }}
-                      >
-                        {item.driverId ? 'Book Your Seat' : 'Book Passenger'}
-                      </Button>
-                      <div className="flex gap-2 w-full">
-                        <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-blue-600 border-blue-100 bg-blue-50/50 hover:bg-blue-100" onClick={(e) => { 
-                          e.stopPropagation(); 
-                          trackInteraction(item.id, 'chat', userRole === 'driver' ? 'rideRequests' : 'rides');
-                          setView('chat', item); 
-                        }}><MessageSquare className="w-3 h-3" /> Chat</Button>
-                        <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-green-600 border-green-100 bg-green-50/50 hover:bg-green-100" onClick={(e) => { 
-                          e.stopPropagation(); 
-                          trackInteraction(item.id, 'whatsapp', userRole === 'driver' ? 'rideRequests' : 'rides');
-                          onWhatsAppClick(item); 
-                        }}><MessageCircle className="w-3 h-3" /> WhatsApp</Button>
-                        <Button variant="outline" size="sm" className="flex-1 h-10 rounded-lg gap-1 text-slate-600 border-slate-200 bg-white hover:bg-slate-50" onClick={(e) => { 
-                          e.stopPropagation(); 
-                          trackInteraction(item.id, 'call', userRole === 'driver' ? 'rideRequests' : 'rides');
-                          window.open(`tel:${item.whatsappNumber}`, '_self'); 
-                        }}><Phone className="w-3 h-3" /> Call</Button>
-                      </div>
-                    </CardFooter>
-                  </Card>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="pt-4 border-t border-slate-100">
-            <AdSlot label="Search Results Ad" />
-          </div>
-        </div>
-      )}
+      
+      {renderResultsUI()}
     </div>
   );
 }
@@ -4192,23 +4271,35 @@ function DetailedProfileView({
   const role = isUserProfile ? item.role : (item.driverId ? 'driver' : 'passenger');
 
   return (
-    <Card className="max-w-md mx-auto">
-      <CardHeader className="text-center">
-        <div className="flex justify-start mb-4">
-          <Button variant="ghost" size="icon" onClick={() => setView(isCurrentUser ? 'dashboard' : (isUserProfile ? 'admin_dashboard' : 'search'))}><Navigation className="rotate-180" /></Button>
+    <Card className="max-w-md mx-auto border border-slate-100 shadow-xl rounded-3xl overflow-hidden bg-white">
+      <CardHeader className="text-center pb-2 relative">
+        <div className="absolute left-4 top-4">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="rounded-full hover:bg-slate-100"
+            onClick={() => setView(isCurrentUser ? 'dashboard' : (isUserProfile ? 'admin_dashboard' : 'search'))}
+          >
+            <Navigation className="rotate-180 w-5 h-5 text-slate-700" />
+          </Button>
         </div>
-        <Avatar className="w-24 h-24 mx-auto border-4 border-blue-100 mb-4">
-          <AvatarImage src={photo} />
-          <AvatarFallback>U</AvatarFallback>
-        </Avatar>
-        <CardTitle className="text-2xl">{name}</CardTitle>
-        {isUserProfile ? (
-          <Badge className="mt-1 capitalize">{role}</Badge>
-        ) : (
-          <CardDescription>{item.origin} se {item.destination}</CardDescription>
-        )}
+        
+        <div className="pt-6">
+          <Avatar className="w-28 h-28 mx-auto border-4 border-blue-50/50 shadow-md">
+            <AvatarImage src={photo} />
+            <AvatarFallback className="bg-blue-600 text-white text-3xl font-bold">
+              {name ? name.charAt(0).toUpperCase() : 'U'}
+            </AvatarFallback>
+          </Avatar>
+        </div>
+
+        <div className="mt-4 space-y-1">
+          <CardTitle className="text-2xl font-black text-slate-900 tracking-tight">{name}</CardTitle>
+          {!isUserProfile && <CardDescription className="text-xs font-semibold text-slate-400">{item.origin} se {item.destination}</CardDescription>}
+        </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+
+      <CardContent className="space-y-6 px-6 pb-6 pt-2">
         {!isUserProfile ? (
           <div className="bg-slate-50 p-4 rounded-xl space-y-2">
             {item.scope === 'intracity' && (
@@ -4239,35 +4330,56 @@ function DetailedProfileView({
             )}
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 text-slate-600">
-              <Phone className="w-5 h-5 text-blue-500" />
-              <span>{item.phoneNumber || 'No Phone'}</span>
+          <div className="space-y-3.5">
+            {/* User ID Box */}
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col shadow-sm">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">User ID</span>
+              <span className="text-base font-extrabold text-slate-800 mt-0.5">{item.customId || 'ET-000000'}</span>
             </div>
-            <div className="flex items-center gap-3 text-slate-600">
-              <MessageCircle className="w-5 h-5 text-green-500" />
-              <span>{item.whatsappNumber || 'No WhatsApp'}</span>
+
+            {/* WhatsApp Number Box */}
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col shadow-sm">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">WhatsApp Number</span>
+              <span className="text-base font-extrabold text-slate-800 mt-0.5">{item.whatsappNumber || item.phoneNumber || 'N/A'}</span>
             </div>
-            {item.bio && (
-              <div className="pt-4 border-t">
-                <p className="text-sm text-slate-500 italic">"{item.bio}"</p>
-              </div>
-            )}
+
+            {/* Role Box */}
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col shadow-sm">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Role</span>
+              <span className="text-base font-extrabold text-slate-800 mt-0.5">
+                {item.role === 'passenger' ? 'Passenger 👤' : (item.vehicleType === 'Bike' ? 'Bike Owner 🏍️' : 'Car Owner 🚗')}
+              </span>
+            </div>
+
+            {/* Bio Box */}
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col shadow-sm">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Bio</span>
+              <span className="text-sm font-medium text-slate-600 mt-0.5 italic">
+                {item.bio ? `"${item.bio}"` : 'EasyTravel par safar asan banayen!'}
+              </span>
+            </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-3 pt-2">
           {isCurrentUser ? (
             <>
-              <Button className="w-full gap-2 py-6 text-lg bg-blue-600 hover:bg-blue-700 rounded-2xl text-white shadow-xl shadow-blue-200 transition-all active:scale-95" onClick={() => setView('edit_profile')}>
+              <Button className="w-full gap-2 py-6 text-lg bg-blue-600 hover:bg-blue-700 rounded-2xl text-white shadow-xl shadow-blue-200 transition-all active:scale-[0.98] font-bold" onClick={() => setView('edit_profile')}>
                 <Edit className="w-5 h-5" /> Edit Profile
               </Button>
-              <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-red-100 text-red-600 rounded-2xl hover:bg-red-50" onClick={() => {
+              <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-red-100 text-red-600 rounded-2xl hover:bg-red-50 font-bold" onClick={() => {
                 logout().then(() => setView('main'));
               }}>
                 <LogOut className="w-5 h-5" /> Log out
               </Button>
             </>
+          ) : isUserProfile ? (
+            <Button 
+              className="w-full gap-2 py-6 text-lg bg-green-600 hover:bg-green-700 rounded-2xl text-white shadow-xl shadow-green-100 transition-all active:scale-[0.98] font-bold"
+              onClick={() => onWhatsAppClick(item)}
+            >
+              <MessageCircle className="w-5 h-5" /> WhatsApp Rabta
+            </Button>
           ) : (
             <>
               <Button 

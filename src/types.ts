@@ -7,6 +7,7 @@ export interface UserProfile {
   phoneNumber?: string;
   whatsappNumber?: string;
   role: 'driver' | 'passenger' | 'both' | 'admin';
+  vehicleType?: 'Car' | 'Bike';
   bio?: string;
   easyCoins?: number;
   createdAt: any;

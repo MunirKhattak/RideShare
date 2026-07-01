@@ -41,9 +41,17 @@ export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan",
   // Current values state for active user
   const [walletBalance, setWalletBalance] = useState<number>(0); 
 
+  const isBikeOwner = profile && ((profile.role as string) === 'bike_owner' || (profile.role === 'driver' && (profile as any).vehicleType === 'Bike'));
+  const baseFee = isBikeOwner ? 200 : 500;
+
   useEffect(() => {
-    if (profile && (profile as any).walletBalance !== undefined) {
-      setWalletBalance((profile as any).walletBalance);
+    if (profile) {
+      if ((profile as any).walletBalance !== undefined) {
+        setWalletBalance((profile as any).walletBalance);
+      }
+      const isBike = (profile.role as string) === 'bike_owner' || (profile.role === 'driver' && (profile as any).vehicleType === 'Bike');
+      const baseFeeVal = isBike ? 200 : 500;
+      setFlatFeeDues(baseFeeVal);
     }
   }, [profile]);
 
@@ -237,7 +245,7 @@ export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan",
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col justify-between">
                   <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Mahaana Raqam</span>
-                  <span className="text-lg font-black text-slate-800 mt-1">Rs. 500 PKR</span>
+                  <span className="text-lg font-black text-slate-800 mt-1">Rs. {baseFee} PKR</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100 flex flex-col justify-between">
                   <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider">Adaa ki gae Raqam</span>

@@ -218,7 +218,7 @@ service cloud.firestore {
     }
 
     match /rideRequests/{requestId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidRideRequest(request.resource.data);
       allow update: if isAuthenticated() && (
         (request.auth.uid == resource.data.passengerId && isValidRideRequest(request.resource.data)) || 

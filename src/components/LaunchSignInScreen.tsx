@@ -15,7 +15,8 @@ import {
   ArrowRight, 
   Check, 
   ShieldCheck, 
-  Phone
+  Phone,
+  Bike
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -30,7 +31,8 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
   const [step, setStep] = useState<1 | 2>(1); // 1 = Sign In, 2 = Complete Profile
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<'driver' | 'passenger'>('passenger');
+  const [roleGroup, setRoleGroup] = useState<'vehicle_owner' | 'passenger'>('passenger');
+  const [subVehicleType, setSubVehicleType] = useState<'Car' | 'Bike'>('Car');
   const [formData, setFormData] = useState({
     displayName: '',
     whatsappNumber: '',
@@ -107,7 +109,8 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
         photoURL: formData.photoURL,
         phoneNumber: formData.whatsappNumber,
         whatsappNumber: formData.whatsappNumber,
-        role: selectedRole,
+        role: roleGroup === 'passenger' ? 'passenger' : 'driver',
+        vehicleType: roleGroup === 'vehicle_owner' ? subVehicleType : undefined,
         easyCoins: 0,
         createdAt: serverTimestamp(),
       };
@@ -308,26 +311,76 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
                     </div>
 
                     {/* Choose Role Selection */}
-                    <div className="space-y-2 pt-1">
-                      <Label className="text-slate-700 text-xs font-bold">Aap kon hain?</Label>
+                    <div className="space-y-3 pt-1">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-slate-700 text-xs font-bold">Apna Role select kren</Label>
+                        <span className="text-[10px] text-slate-400 font-medium">(baad me ap role change kr skte hain)</span>
+                      </div>
+                      
                       <div className="grid grid-cols-2 gap-3">
                         <Button 
                           type="button"
-                          variant={selectedRole === 'driver' ? 'default' : 'outline'}
-                          className={`h-11 rounded-xl text-xs font-bold transition-all border-slate-200 ${selectedRole === 'driver' ? 'bg-blue-600 hover:bg-blue-700 text-white border-none shadow-md shadow-blue-600/10' : 'bg-transparent text-slate-600 hover:bg-slate-50'}`}
-                          onClick={() => setSelectedRole('driver')}
+                          variant={roleGroup === 'vehicle_owner' ? 'default' : 'outline'}
+                          className={`h-11 rounded-xl text-xs font-bold transition-all border-slate-200 ${
+                            roleGroup === 'vehicle_owner' 
+                              ? 'bg-blue-600 hover:bg-blue-700 text-white border-none shadow-md shadow-blue-600/10' 
+                              : 'bg-transparent text-slate-600 hover:bg-slate-50'
+                          }`}
+                          onClick={() => setRoleGroup('vehicle_owner')}
                         >
-                          <Car className="w-3.5 h-3.5 mr-1" /> Car Owner
+                          <Car className="w-3.5 h-3.5 mr-1" /> Vehicle Owner
                         </Button>
+                        
                         <Button 
                           type="button"
-                          variant={selectedRole === 'passenger' ? 'default' : 'outline'}
-                          className={`h-11 rounded-xl text-xs font-bold transition-all border-slate-200 ${selectedRole === 'passenger' ? 'bg-blue-600 hover:bg-blue-700 text-white border-none shadow-md shadow-blue-600/10' : 'bg-transparent text-slate-600 hover:bg-slate-50'}`}
-                          onClick={() => setSelectedRole('passenger')}
+                          variant={roleGroup === 'passenger' ? 'default' : 'outline'}
+                          className={`h-11 rounded-xl text-xs font-bold transition-all border-slate-200 ${
+                            roleGroup === 'passenger' 
+                              ? 'bg-blue-600 hover:bg-blue-700 text-white border-none shadow-md shadow-blue-600/10' 
+                              : 'bg-transparent text-slate-600 hover:bg-slate-50'
+                          }`}
+                          onClick={() => setRoleGroup('passenger')}
                         >
                           <UserIcon className="w-3.5 h-3.5 mr-1" /> Passenger
                         </Button>
                       </div>
+
+                      {roleGroup === 'vehicle_owner' && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="space-y-1.5 p-3 bg-slate-50 border border-slate-100 rounded-2xl"
+                        >
+                          <Label className="text-slate-500 text-[10px] font-extrabold uppercase tracking-wider block">Vehicle ki qisam select karein</Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button 
+                              type="button"
+                              variant={subVehicleType === 'Car' ? 'default' : 'outline'}
+                              className={`h-9 rounded-lg text-[11px] font-bold transition-all border-slate-200 ${
+                                subVehicleType === 'Car' 
+                                  ? 'bg-slate-900 hover:bg-slate-800 text-white border-none shadow-sm' 
+                                  : 'bg-white text-slate-600 hover:bg-slate-50'
+                              }`}
+                              onClick={() => setSubVehicleType('Car')}
+                            >
+                              <Car className="w-3 h-3 mr-1" /> Car Owner
+                            </Button>
+                            
+                            <Button 
+                              type="button"
+                              variant={subVehicleType === 'Bike' ? 'default' : 'outline'}
+                              className={`h-9 rounded-lg text-[11px] font-bold transition-all border-slate-200 ${
+                                subVehicleType === 'Bike' 
+                                  ? 'bg-slate-900 hover:bg-slate-800 text-white border-none shadow-sm' 
+                                  : 'bg-white text-slate-600 hover:bg-slate-50'
+                              }`}
+                              onClick={() => setSubVehicleType('Bike')}
+                            >
+                              <Bike className="w-3 h-3 mr-1" /> Bike Owner
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
                     </div>
 
                     <Button 
