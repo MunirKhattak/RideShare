@@ -97,6 +97,40 @@ const trackInteraction = async (rideId: string, type: 'call' | 'whatsapp' | 'cha
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  
+  // Support for Guest / Offline Mock User Session
+  useEffect(() => {
+    const loadMockSession = () => {
+      const savedMockUser = localStorage.getItem('easytravel_mock_user');
+      const savedMockProfile = localStorage.getItem('easytravel_mock_profile');
+      
+      if (savedMockUser && savedMockProfile) {
+        setUser(JSON.parse(savedMockUser) as any);
+        setProfile(JSON.parse(savedMockProfile) as any);
+      } else if (!savedMockUser && !savedMockProfile) {
+        // If clear occurred, reset state if we have a mock user
+        setUser(currentUser => {
+          if (currentUser && currentUser.uid.startsWith('mock-')) {
+            return null;
+          }
+          return currentUser;
+        });
+        setProfile(currentProfile => {
+          if (currentProfile && currentProfile.uid.startsWith('mock-')) {
+            return null;
+          }
+          return currentProfile;
+        });
+      }
+    };
+
+    loadMockSession();
+    window.addEventListener('easytravel_mock_auth_changed', loadMockSession);
+    return () => {
+      window.removeEventListener('easytravel_mock_auth_changed', loadMockSession);
+    };
+  }, []);
+
   const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint' | 'privacy_policy'>('main');
   const [travelScope, setTravelScope] = useState<'intercity' | 'intracity' | null>(null);
   const viewRef = useRef(view);

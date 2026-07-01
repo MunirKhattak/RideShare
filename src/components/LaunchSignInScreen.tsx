@@ -31,7 +31,7 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
   const [step, setStep] = useState<1 | 2>(1); // 1 = Sign In, 2 = Complete Profile
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [roleGroup, setRoleGroup] = useState<'vehicle_owner' | 'passenger'>('passenger');
+  const [roleGroup, setRoleGroup] = useState<'vehicle_owner' | 'passenger'>('vehicle_owner');
   const [subVehicleType, setSubVehicleType] = useState<'Car' | 'Bike'>('Car');
   const [formData, setFormData] = useState({
     displayName: '',
@@ -80,7 +80,10 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
           { duration: 8000 }
         );
       } else {
-        toast.error(`Sign in fail ho gaya. Please dobara try karein.`);
+        toast.error(
+          "Sign in fail ho gaya. Browser security / cookies ki waja se Google Login block ho sakta hai. Niche dia gaya 'Fast Guest & Demo Mode' button use karein!",
+          { duration: 8000 }
+        );
       }
     } finally {
       setIsSigningIn(false);
@@ -112,12 +115,34 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
         role: roleGroup === 'passenger' ? 'passenger' : 'driver',
         vehicleType: roleGroup === 'vehicle_owner' ? subVehicleType : undefined,
         easyCoins: 0,
-        createdAt: serverTimestamp(),
+        createdAt: new Date(),
       };
-      await setDoc(doc(db, 'users', user.uid), newProfile);
-      setProfile(newProfile);
-      toast.success(`Registration mukammal ho gayi! ID: ${customId}`);
-      setView('dashboard');
+
+      if (user.uid.startsWith('mock-')) {
+        localStorage.setItem(`easytravel_mock_profile_${user.uid}`, JSON.stringify(newProfile));
+        localStorage.setItem('easytravel_mock_profile', JSON.stringify(newProfile));
+        setProfile(newProfile);
+        toast.success(`Registration mukammal ho gayi! ID: ${customId}`);
+        setView('dashboard');
+      } else {
+        try {
+          const finalProfile = {
+            ...newProfile,
+            createdAt: serverTimestamp()
+          };
+          await setDoc(doc(db, 'users', user.uid), finalProfile);
+          setProfile(newProfile);
+          toast.success(`Registration mukammal ho gayi! ID: ${customId}`);
+          setView('dashboard');
+        } catch (dbErr) {
+          console.warn("Could not save profile to Firestore, saving locally as backup:", dbErr);
+          localStorage.setItem(`easytravel_mock_profile_${user.uid}`, JSON.stringify(newProfile));
+          localStorage.setItem('easytravel_mock_profile', JSON.stringify(newProfile));
+          setProfile(newProfile);
+          toast.success(`Registration locally save ho gayi! ID: ${customId}`);
+          setView('dashboard');
+        }
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'users');
     } finally {
@@ -126,7 +151,7 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
   };
 
   return (
-    <div className="min-h-screen bg-premium-login-gradient flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
+    <div className="min-h-screen bg-premium-login-gradient flex flex-col justify-start py-8 pb-24 px-4 sm:px-6 lg:px-8 font-sans relative overflow-y-auto">
       
       {/* Decorative background gradients (very subtle, clean) */}
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-blue-100/20 rounded-full blur-3xl pointer-events-none -z-10" />

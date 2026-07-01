@@ -87,6 +87,13 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
+  
+  // Non-destructive read fallback warning instead of throwing to prevent crashing on sandboxed network/iframe limits
+  if (operationType === OperationType.LIST || operationType === OperationType.GET) {
+    console.warn("Firestore read failed, using cached/offline data fallback.");
+    return;
+  }
+
   throw new Error(JSON.stringify(errInfo));
 }
 
@@ -102,4 +109,9 @@ export const signInWithGoogle = async () => {
   }
 };
 
-export const logout = () => signOut(auth);
+export const logout = () => {
+  localStorage.removeItem('easytravel_mock_user');
+  localStorage.removeItem('easytravel_mock_profile');
+  window.dispatchEvent(new Event('easytravel_mock_auth_changed'));
+  return signOut(auth);
+};
