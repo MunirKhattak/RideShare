@@ -81,7 +81,7 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
         );
       } else {
         toast.error(
-          "Sign in fail ho gaya. Browser security / cookies ki waja se Google Login block ho sakta hai. Niche dia gaya 'Fast Guest & Demo Mode' button use karein!",
+          "Sign in fail ho gaya. Browser security / cookies ki waja se Google Login block ho sakta hai. Please check your connection and try again!",
           { duration: 8000 }
         );
       }
@@ -104,7 +104,7 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
     setIsSubmitting(true);
     try {
       const customId = `ET-${Math.floor(100000 + Math.random() * 900000)}`;
-      const newProfile: UserProfile = {
+      const newProfile: any = {
         uid: user.uid,
         customId: customId,
         displayName: formData.displayName,
@@ -113,10 +113,13 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
         phoneNumber: formData.whatsappNumber,
         whatsappNumber: formData.whatsappNumber,
         role: roleGroup === 'passenger' ? 'passenger' : 'driver',
-        vehicleType: roleGroup === 'vehicle_owner' ? subVehicleType : undefined,
         easyCoins: 0,
         createdAt: new Date(),
       };
+
+      if (roleGroup === 'vehicle_owner') {
+        newProfile.vehicleType = subVehicleType;
+      }
 
       if (user.uid.startsWith('mock-')) {
         localStorage.setItem(`easytravel_mock_profile_${user.uid}`, JSON.stringify(newProfile));
@@ -370,42 +373,52 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
                         </Button>
                       </div>
 
-                      {roleGroup === 'vehicle_owner' && (
-                        <motion.div 
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="space-y-1.5 p-3 bg-slate-50 border border-slate-100 rounded-2xl"
-                        >
-                          <Label className="text-slate-500 text-[10px] font-extrabold uppercase tracking-wider block">Vehicle ki qisam select karein</Label>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button 
-                              type="button"
-                              variant={subVehicleType === 'Car' ? 'default' : 'outline'}
-                              className={`h-9 rounded-lg text-[11px] font-bold transition-all border-slate-200 ${
-                                subVehicleType === 'Car' 
-                                  ? 'bg-slate-900 hover:bg-slate-800 text-white border-none shadow-sm' 
-                                  : 'bg-white text-slate-600 hover:bg-slate-50'
-                              }`}
-                              onClick={() => setSubVehicleType('Car')}
-                            >
-                              <Car className="w-3 h-3 mr-1" /> Car Owner
-                            </Button>
-                            
-                            <Button 
-                              type="button"
-                              variant={subVehicleType === 'Bike' ? 'default' : 'outline'}
-                              className={`h-9 rounded-lg text-[11px] font-bold transition-all border-slate-200 ${
-                                subVehicleType === 'Bike' 
-                                  ? 'bg-slate-900 hover:bg-slate-800 text-white border-none shadow-sm' 
-                                  : 'bg-white text-slate-600 hover:bg-slate-50'
-                              }`}
-                              onClick={() => setSubVehicleType('Bike')}
-                            >
-                              <Bike className="w-3 h-3 mr-1" /> Bike Owner
-                            </Button>
-                          </div>
-                        </motion.div>
-                      )}
+                      <div className="space-y-1.5 p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                        <Label className="text-slate-500 text-[10px] font-extrabold uppercase tracking-wider block">
+                          Vehicle ki qisam {roleGroup !== 'vehicle_owner' && <span className="text-slate-400 font-normal normal-case">(Sirf Vehicle Owner ke liye)</span>}
+                        </Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button 
+                            type="button"
+                            variant={subVehicleType === 'Car' ? 'default' : 'outline'}
+                            className={`h-9 rounded-lg text-[11px] font-bold transition-all border-slate-200 ${
+                              subVehicleType === 'Car' 
+                                ? 'bg-slate-900 hover:bg-slate-800 text-white border-none shadow-sm' 
+                                : 'bg-white text-slate-600 hover:bg-slate-50'
+                            } ${roleGroup !== 'vehicle_owner' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            onClick={() => {
+                              if (roleGroup === 'vehicle_owner') {
+                                setSubVehicleType('Car');
+                              } else {
+                                setRoleGroup('vehicle_owner');
+                                setSubVehicleType('Car');
+                              }
+                            }}
+                          >
+                            <Car className="w-3 h-3 mr-1" /> Car Owner
+                          </Button>
+                          
+                          <Button 
+                            type="button"
+                            variant={subVehicleType === 'Bike' ? 'default' : 'outline'}
+                            className={`h-9 rounded-lg text-[11px] font-bold transition-all border-slate-200 ${
+                              subVehicleType === 'Bike' 
+                                ? 'bg-slate-900 hover:bg-slate-800 text-white border-none shadow-sm' 
+                                : 'bg-white text-slate-600 hover:bg-slate-50'
+                            } ${roleGroup !== 'vehicle_owner' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            onClick={() => {
+                              if (roleGroup === 'vehicle_owner') {
+                                setSubVehicleType('Bike');
+                              } else {
+                                setRoleGroup('vehicle_owner');
+                                setSubVehicleType('Bike');
+                              }
+                            }}
+                          >
+                            <Bike className="w-3 h-3 mr-1" /> Bike Owner
+                          </Button>
+                        </div>
+                      </div>
                     </div>
 
                     <Button 

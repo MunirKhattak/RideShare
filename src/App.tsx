@@ -545,6 +545,8 @@ export default function App() {
             setPendingStatusReport({ id: doc.id, collection: coll, ...data });
           }
         }
+      }, (error) => {
+        console.error(`Error listening for pending status on ${coll}:`, error);
       });
     });
 
@@ -612,6 +614,8 @@ export default function App() {
           }
         });
       });
+    }, (error) => {
+      console.error("Error listening for rewards background updates:", error);
     });
 
     return () => unsub();
@@ -629,6 +633,8 @@ export default function App() {
       snap.docs.forEach(docSnap => {
         updateDoc(doc(db, 'messages', docSnap.id), { status: 'delivered' }).catch(console.error);
       });
+    }, (error) => {
+      console.error("Error running global delivered messages listener:", error);
     });
     return () => unsub();
   }, [user]);
@@ -779,8 +785,8 @@ export default function App() {
               setProfile(null);
               
               // If the user's profile is deleted by an admin, we clear their Auth session.
-              // We only do this if they are not currently in the registration view.
-              if (viewRef.current !== 'register') {
+              // We only do this if they are not currently in the registration or login views.
+              if (viewRef.current !== 'register' && viewRef.current !== 'main') {
                 logout().then(() => {
                   toast.error("Aap ka account admin ne remove kar diya hai. Please dobara Register karein.");
                   setView('main');
@@ -2641,6 +2647,8 @@ function Dashboard({
     return onSnapshot(q, (snap) => {
       const rides = snap.docs.map(doc => ({ id: doc.id, collection: 'rides', ...doc.data() }));
       setActiveRidesList(rides);
+    }, (error) => {
+      console.error("Error listening for active rides:", error);
     });
   }, [user]);
 
@@ -2653,6 +2661,8 @@ function Dashboard({
     return onSnapshot(q, (snap) => {
       const requests = snap.docs.map(doc => ({ id: doc.id, collection: 'rideRequests', ...doc.data() }));
       setActiveRequestsList(requests);
+    }, (error) => {
+      console.error("Error listening for active ride requests:", error);
     });
   }, [user]);
 
@@ -3386,6 +3396,15 @@ const CLEAN_LOCAL_LOCATIONS = [
 
 function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick, travelScope }: { setView: (v: any, item?: any) => void, userRole: 'driver' | 'passenger', onWhatsAppClick: (item: any) => void, onBookClick: (item: any) => void, travelScope?: 'intercity' | 'intracity' | null }) {
   const isIntracity = travelScope === 'intracity';
+  const searchUnsubRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (searchUnsubRef.current) {
+        searchUnsubRef.current();
+      }
+    };
+  }, []);
 
   const [searchData, setSearchData] = useState({
     origin: '',
@@ -3424,10 +3443,15 @@ function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick, travelSc
 
     const collectionName = userRole === 'driver' ? 'rideRequests' : 'rides';
     
+    if (searchUnsubRef.current) {
+      searchUnsubRef.current();
+      searchUnsubRef.current = null;
+    }
+
     // Fetch all documents and filter client-side for case-insensitivity
     const q = query(collection(db, collectionName));
     
-    onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(q, (snapshot) => {
       let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       // Client-side filtering
@@ -3469,6 +3493,8 @@ function RouteSearch({ setView, userRole, onWhatsAppClick, onBookClick, travelSc
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, collectionName);
     });
+
+    searchUnsubRef.current = unsub;
   };
 
   const renderResultsUI = () => (
@@ -4523,6 +4549,8 @@ function Chat({ user, item, setView }: { user: User | null, item: any, setView: 
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'messages');
     });
 
     return () => unsub();
