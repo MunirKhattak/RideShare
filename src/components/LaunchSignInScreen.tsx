@@ -169,8 +169,8 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
           className="flex flex-col items-center gap-4"
         >
           {/* Logo element identical to the splash screen */}
-          <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/15">
-            <span className="text-white font-black text-3xl italic">ET.</span>
+          <div className="w-20 h-20 flex items-center justify-center">
+            <img src="/icon.svg" className="w-20 h-20 object-contain drop-shadow-lg" alt="EasyTravel Logo" referrerPolicy="no-referrer" />
           </div>
 
           <div className="flex flex-col items-center">

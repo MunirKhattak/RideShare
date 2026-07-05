@@ -374,7 +374,7 @@ export default function IntracityDemo({
                   <div className="bg-white/20 w-12 h-12 rounded-xl flex items-center justify-center mb-4 backdrop-blur-md">
                     <Car className="w-8 h-8 text-white" />
                   </div>
-                  <CardTitle className="text-3xl font-bold mb-1">Mai Car / Bike <br /> Owner Hoon</CardTitle>
+                  <CardTitle className="text-3xl font-bold mb-1">Main Car / Bike <br /> Owner Hoon</CardTitle>
                   <CardDescription className="text-emerald-100 text-lg font-medium">
                     Mujhe Passenger Chahye
                   </CardDescription>

@@ -1301,7 +1301,7 @@ export default function App() {
   const renderView = () => {
     switch (view) {
       case 'main':
-        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} />;
+        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} travelScope={travelScope} />;
       case 'register': {
         let defaultRegRole: 'driver' | 'passenger' = (profile?.role as 'driver' | 'passenger') || 'passenger';
         try {
@@ -1358,7 +1358,7 @@ export default function App() {
       case 'privacy_policy':
         return <PrivacyPolicy setView={setView} />;
       default:
-        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} />;
+        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} travelScope={travelScope} />;
     }
   };
 
@@ -1491,12 +1491,10 @@ function Header({ user, profile, setView, onSignInClick, onInstall }: { user: Us
   return (
     <header className="bg-white border-b sticky top-0 z-50 shadow-sm">
       <div className="px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('main')}>
-          <div className="bg-blue-600 w-10 h-10 rounded-lg flex items-center justify-center shadow-md">
-            <span className="text-white font-black text-xl italic">ET.</span>
-          </div>
+        <div className="flex items-center gap-4 cursor-pointer" onClick={() => setView('main')}>
+          <img src="/icon.svg" className="w-[56px] h-[56px] object-contain drop-shadow-md" alt="EasyTravel Logo" referrerPolicy="no-referrer" />
           <div className="flex flex-col">
-            <h1 className="text-2xl font-black tracking-tighter leading-none">
+            <h1 className="text-3xl font-black tracking-tighter leading-none">
               <span className="text-red-600">Easy</span>
               <span className="text-blue-600">Travel</span>
             </h1>
@@ -1995,7 +1993,7 @@ function NewBookingCard({
   );
 }
 
-function MainPage({ setView, setProfile, user, profile }: { setView: (v: any, item?: any) => void, setProfile: (p: any) => void, user: User | null, profile: UserProfile | null }) {
+function MainPage({ setView, setProfile, user, profile, travelScope }: { setView: (v: any, item?: any) => void, setProfile: (p: any) => void, user: User | null, profile: UserProfile | null, travelScope?: 'intercity' | 'intracity' | null }) {
   const handleRoleSelection = async (role: 'driver' | 'passenger') => {
     // If user is already logged in, update their role in the profile
     if (user && profile) {
@@ -2039,7 +2037,13 @@ function MainPage({ setView, setProfile, user, profile }: { setView: (v: any, it
               <div className="bg-white/20 w-12 h-12 rounded-xl flex items-center justify-center mb-4 backdrop-blur-md">
                 <Car className="w-8 h-8 text-white" />
               </div>
-              <CardTitle className="text-3xl font-bold mb-1">Mai Car Owner <br /> Hoon</CardTitle>
+              <CardTitle className="text-3xl font-bold mb-1">
+                {travelScope === 'intracity' ? (
+                  <>Main Car / Bike <br /> Owner Hoon</>
+                ) : (
+                  <>Mai Car Owner <br /> Hoon</>
+                )}
+              </CardTitle>
               <CardDescription className="text-blue-100 text-lg font-medium">
                 Mujhe Passenger Chahye
               </CardDescription>
@@ -3870,8 +3874,8 @@ function LoadingSpinner() {
         transition={{ duration: 0.5 }}
         className="flex flex-col items-center gap-6"
       >
-        <div className="bg-blue-600 w-20 h-20 rounded-2xl flex items-center justify-center shadow-xl">
-          <span className="text-white font-black text-4xl italic">ET.</span>
+        <div className="w-24 h-24 flex items-center justify-center">
+          <img src="/icon.svg" className="w-24 h-24 object-contain drop-shadow-xl animate-pulse" alt="EasyTravel Logo" referrerPolicy="no-referrer" />
         </div>
         
         <div className="flex flex-col items-center">
