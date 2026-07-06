@@ -695,41 +695,18 @@ export default function LiveActivePassengerMap({
                               <p className="text-[9px] text-emerald-600 font-normal font-sans">Aap dono ka trip connect kar diya gaya hai.</p>
                             </div>
                           </div>
-
-                          {!tripStarted ? (
-                            <button 
-                              onClick={() => {
-                                setTripStarted(true);
-                                toast.success("Safar shuru ho chuka hai! Safe travel 💎");
-                              }}
-                              className="w-full bg-blue-600 hover:bg-blue-700 text-white h-10 rounded-xl font-bold text-xs cursor-pointer"
-                            >
-                              Safar Shuru (Start Trip)
-                            </button>
-                          ) : tripCompleted ? (
-                            <div className="space-y-2">
-                              <div className="p-2 bg-emerald-50 text-emerald-800 rounded-xl text-center text-[11px] font-bold border border-emerald-100">
-                                Safar Ba-Khairiat Mukamal Ho Gaya!
-                              </div>
-                              <button 
-                                onClick={() => {
-                                  setBookingConfirmed(false);
-                                  setTripStarted(false);
-                                  setTripProgress(0);
-                                  setTripCompleted(false);
-                                  setSelectedPassenger(null);
-                                }}
-                                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold h-9 rounded-xl cursor-pointer"
-                              >
-                                Naya Safar Dhoonden
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="bg-slate-100 p-1.5 text-center rounded-xl border border-slate-200">
-                              <span className="text-[9px] uppercase font-mono tracking-widest text-blue-600 animate-pulse font-bold block">Safar Jaari Hai...</span>
-                              <span className="text-[10px] font-medium text-slate-500">{tripProgress}% safar mukamal</span>
-                            </div>
-                          )}
+                          <button 
+                            onClick={() => {
+                              setBookingConfirmed(false);
+                              setTripStarted(false);
+                              setTripProgress(0);
+                              setTripCompleted(false);
+                              setSelectedPassenger(null);
+                            }}
+                            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold h-9 rounded-xl cursor-pointer"
+                          >
+                            Reset / Naya Safar Dhoonden
+                          </button>
                         </div>
                       )}
                     </div>

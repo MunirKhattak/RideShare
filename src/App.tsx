@@ -280,219 +280,13 @@ export default function App() {
     return () => unsub();
   }, [user]);
 
-  const prevRidesRef = useRef<Record<string, any>>({});
-  const lastNotificationRef = useRef<Record<string, number>>({});
-
-  // Monitor Rides and Requests for Notifications
   useEffect(() => {
-    if (!user) return;
-
-    const monitorCollection = (collectionName: 'rides' | 'rideRequests') => {
-      const q = query(
-        collection(db, collectionName),
-        where('participants', 'array-contains', user.uid)
-      );
-
-      return onSnapshot(q, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-          const ride = { id: change.doc.id, ...change.doc.data() } as any;
-          const oldRide = prevRidesRef.current[ride.id];
-
-          if (change.type === 'modified' && oldRide) {
-            const isDriver = user.uid === ride.driverId;
-            
-            // Monitor rewardStatus for changes from OTHER users
-            const passengers = Object.keys(ride.rewardStatus || {});
-            
-            passengers.forEach((pId) => {
-              const newStatus = ride.rewardStatus[pId];
-              const oldStatus = oldRide.rewardStatus?.[pId];
-              if (!newStatus || !oldStatus) return;
-
-              const isMePassenger = user.uid === pId;
-              const isRelevantToMe = isDriver || isMePassenger;
-              if (!isRelevantToMe) return;
-
-              // 1. Check for Start Confirmation from OTHER user
-              if (newStatus.startTimeConfirmed && !oldStatus.startTimeConfirmed && newStatus.startConfirmedBy !== user.uid) {
-                const otherName = isDriver ? (newStatus.name || 'Passenger') : (ride.driverName || 'Car Owner');
-                showNotification("Safar Shuru!", {
-                  body: `${otherName} ne safar shuru hone ki tasdeeq kar di hai. Click kar ke confirm karein.`,
-                  tag: `start-confirmed-${ride.id}`,
-                  data: { url: `${window.location.origin}/?view=dashboard&action=start_ride&rideId=${ride.id}` }
-                });
-              }
-
-              // 2. Check for Completion from OTHER user
-              const newOtherConfirmed = isDriver ? (newStatus.passengerConfirmed && !oldStatus.passengerConfirmed) : (newStatus.driverConfirmed && !oldStatus.driverConfirmed);
-              
-              if (newOtherConfirmed && newStatus.lastConfirmedBy !== user.uid) {
-                const otherName = isDriver ? (newStatus.name || 'Passenger') : (ride.driverName || 'Car Owner');
-                showNotification("Safar Mukamal?", {
-                  body: `${otherName} ne ride mukammal hone ka status diya hai. Click kar ke confirm karein.`,
-                  tag: `complete-other-${ride.id}`,
-                  data: { url: `${window.location.origin}/?view=dashboard&action=complete_ride&rideId=${ride.id}` }
-                });
-              }
-            });
-          }
-          
-          // Update ref with latest data
-          prevRidesRef.current[ride.id] = ride;
-        });
-
-        // Initial load: populate ref
-        if (snapshot.docChanges().length === snapshot.docs.length) {
-          snapshot.docs.forEach(doc => {
-            prevRidesRef.current[doc.id] = { id: doc.id, ...doc.data() };
-          });
-        }
-      }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, collectionName);
-      });
-    };
-
-    const unsubRides = monitorCollection('rides');
-    const unsubRequests = monitorCollection('rideRequests');
-
-    return () => {
-      unsubRides();
-      unsubRequests();
-    };
-  }, [user]);
-
-  // Scheduled Reminders (30m and 5h AFTER start)
-  useEffect(() => {
-    if (!user) return;
-
-    const monitorReminders = (collectionName: 'rides' | 'rideRequests') => {
-      const q = query(
-        collection(db, collectionName),
-        where('participants', 'array-contains', user.uid)
-      );
-
-      return onSnapshot(q, (snapshot) => {
-        const now = new Date().getTime();
-        snapshot.docs.forEach(doc => {
-          const ride = doc.data() as any;
-          const rideTime = new Date(`${ride.date}T${ride.time || '00:00'}`).getTime();
-          const diffMs = now - rideTime; // Time passed since start
-          const diffMins = diffMs / (1000 * 60);
-          const diffHours = diffMins / 60;
-
-          const isDriver = user.uid === ride.driverId;
-          const statuses = Object.values(ride.rewardStatus || {}) as any[];
-          
-          let startTimeConfirmed = false;
-          let alreadyConfirmedComplete = false;
-
-          if (isDriver) {
-            if (statuses.length > 0) {
-              startTimeConfirmed = statuses.every(s => s.startTimeConfirmed);
-              alreadyConfirmedComplete = statuses.every(s => s.driverConfirmed);
-            } else {
-              startTimeConfirmed = true;
-              alreadyConfirmedComplete = true;
-            }
-          } else {
-            const status = ride.rewardStatus?.[user.uid];
-            if (!status) return;
-
-            startTimeConfirmed = !!status.startTimeConfirmed;
-            alreadyConfirmedComplete = !!status.passengerConfirmed;
-          }
-
-          const rideKey = `${doc.id}-${user.uid}`;
-
-          // 30 Minute AFTER Start Reminder (Window widened to 2 hours for reliability)
-          if (diffMins > 29 && diffMins < 120 && !startTimeConfirmed) {
-            const lastTime = lastNotificationRef.current[`${rideKey}-start`];
-            if (!lastTime || (now - lastTime > 15 * 60 * 1000)) { // 15 mins throttle
-              showNotification("Kia ap ne Safar shuru kr lya?", {
-                body: `Aap ka safar (${ride.origin} se ${ride.destination}) shuru karne ka waqt ho chuka hai.`,
-                tag: `reminder-start-30m-${doc.id}`,
-                data: { url: `${window.location.origin}/?view=dashboard&action=start_ride&rideId=${doc.id}` }
-              });
-              lastNotificationRef.current[`${rideKey}-start`] = now;
-            }
-          }
-
-          // 5 Hour AFTER Start Reminder
-          if (diffHours > 4.9 && diffHours < 12 && !alreadyConfirmedComplete) {
-            const lastTime = lastNotificationRef.current[`${rideKey}-complete`];
-            if (!lastTime || (now - lastTime > 15 * 60 * 1000)) { // 15 mins throttle
-              showNotification("Kia apka safar mukamal hua?", {
-                body: `Aap ka safar (${ride.origin} se ${ride.destination}) shuru hue 5 ghantay ho gaye hain.`,
-                tag: `reminder-complete-5h-${doc.id}`,
-                data: { url: `${window.location.origin}/?view=dashboard&action=complete_ride&rideId=${doc.id}` }
-              });
-              lastNotificationRef.current[`${rideKey}-complete`] = now;
-            }
-          }
-        });
-      }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, collectionName);
-      });
-    };
-
-    const unsubRides = monitorReminders('rides');
-    const unsubRequests = monitorReminders('rideRequests');
-
-    return () => {
-      unsubRides();
-      unsubRequests();
-    };
-  }, [user]);
-
-  useEffect(() => {
-    // Handle deep links from notifications
+    // Handle deep links from notifications cleanly
     const params = new URLSearchParams(window.location.search);
     const urlView = params.get('view');
-    const action = params.get('action');
-    const rideId = params.get('rideId');
-
     if (urlView === 'dashboard') {
       setViewState('dashboard');
-      
-      if (action && rideId) {
-        if (user) {
-          const fetchRide = async () => {
-            try {
-              const rideDoc = await getDoc(doc(db, 'rides', rideId));
-              if (rideDoc.exists()) {
-                const rideData = { id: rideDoc.id, ...rideDoc.data() } as any;
-                const isDriver = user.uid === rideData.driverId;
-                const passengerId = isDriver 
-                  ? (rideData.participants?.find((id: string) => id !== user.uid)) 
-                  : user.uid;
-                
-                if (!passengerId) return;
-
-                setRewardTask({
-                  ride: rideData,
-                  passengerId,
-                  type: action === 'start_ride' ? 'start' : 'complete',
-                  otherUser: {
-                    name: isDriver ? (rideData.rewardStatus?.[passengerId]?.name || 'User') : rideData.driverName,
-                    id: (isDriver ? passengerId : rideData.driverId).substring(0, 4)
-                  }
-                });
-                // Clean up URL only after handling
-                window.history.replaceState({}, '', window.location.pathname);
-              }
-            } catch (error) {
-              console.error("Error fetching deep link ride:", error);
-              // Clean up on error too
-              window.history.replaceState({}, '', window.location.pathname);
-            }
-          };
-          fetchRide();
-        }
-        // If no user yet, don't clear URL, wait for next effect run when user is set
-      } else {
-        // Only view=dashboard, no action, can clear
-        window.history.replaceState({}, '', window.location.pathname);
-      }
+      window.history.replaceState({}, '', window.location.pathname);
     }
   }, [user]);
 
@@ -1422,7 +1216,7 @@ export default function App() {
         <ComplaintReplyModal complaint={activeComplaintReply} onClose={() => setActiveComplaintReply(null)} />
       )}
 
-      {pendingStatusReport && !rewardTask && (
+      {pendingStatusReport && (
         <RideStatusPromptModal 
           item={pendingStatusReport} 
           onClose={() => setPendingStatusReport(null)} 
@@ -1434,16 +1228,6 @@ export default function App() {
           user={user} 
           profile={profile} 
           onClose={() => setWaModalData(null)} 
-        />
-      )}
-
-      {rewardTask && (
-        <RewardModal 
-          task={rewardTask} 
-          onConfirm={() => handleRewardAction(rewardTask, 'confirm')}
-          onClose={() => setRewardTask(null)}
-          onShowAd={() => setShowInterstitialAd(true)}
-          user={user}
         />
       )}
 
@@ -1736,167 +1520,15 @@ function BookingModal({
   );
 }
 
-function RewardModal({ task, onConfirm, onClose, user, onShowAd }: { task: any, onConfirm: () => void, onClose: () => void, user: any, onShowAd?: () => void }) {
-  const { state, type } = task;
-  const displayType = type || task.type;
-  const adTriggered = useRef(false);
-
-  const isDriver = user?.uid === task.ride.driverId;
-  const otherUserRole = isDriver ? 'Passenger' : 'Car Owner';
-
-  useEffect(() => {
-    if (displayType === 'success' || displayType === 'start_success') {
-      const duration = 3 * 1000;
-      const animationEnd = Date.now() + duration;
-      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
-
-      const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
-
-      const interval: any = setInterval(function() {
-        const timeLeft = animationEnd - Date.now();
-
-        if (timeLeft <= 0) {
-          return clearInterval(interval);
-        }
-
-        const particleCount = 50 * (timeLeft / duration);
-        confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
-        confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
-      }, 250);
-
-      // Intercept back button
-      window.history.pushState({ modal: 'reward-success' }, '');
-      const handlePopState = () => {
-        if (!adTriggered.current) {
-          adTriggered.current = true;
-          onClose();
-          if (onShowAd) onShowAd();
-        }
-      };
-      window.addEventListener('popstate', handlePopState);
-
-      return () => {
-        window.removeEventListener('popstate', handlePopState);
-        if (interval) clearInterval(interval);
-      };
-    }
-  }, [displayType, onClose, onShowAd]);
-
-  const handleFinalAction = () => {
-    if (!adTriggered.current) {
-      adTriggered.current = true;
-      // If we're still on the dummy state, go back to clean history
-      if (window.history.state?.modal === 'reward-success') {
-        window.history.back();
-      }
-      onClose();
-      if (onShowAd) onShowAd();
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="bg-white rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl border border-slate-100"
-      >
-        {displayType === 'start' && (
-          <div className="p-8 text-center space-y-6">
-            <div className="w-24 h-24 bg-blue-50 rounded-3xl flex items-center justify-center mx-auto shadow-sm border border-blue-100">
-              <Clock className="w-12 h-12 text-blue-600" />
-            </div>
-            <div className="space-y-3">
-              <h3 className="text-3xl font-black text-slate-900 tracking-tight">Safar Shuru?</h3>
-              <div className="space-y-2">
-                <p className="text-slate-600 leading-relaxed">
-                  Kia apka safar <span className="font-bold text-slate-900">{otherUserRole} {task.otherUser?.name || 'User'}</span> k sath shuru hua?
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-3 pt-2">
-              <Button className="h-16 rounded-2xl bg-blue-600 hover:bg-blue-700 text-xl font-black shadow-lg shadow-blue-200 transition-all active:scale-95" onClick={onConfirm}>Haan, Shuru ho gaya</Button>
-              <Button variant="ghost" className="text-slate-400 font-bold hover:text-slate-600" onClick={onClose}>Abhi nahi</Button>
-            </div>
-          </div>
-        )}
-
-        {(displayType === 'complete' || displayType === 'confirm_complete') && (
-          <div className="p-8 text-center space-y-6">
-            <div className="w-24 h-24 bg-orange-50 rounded-3xl flex items-center justify-center mx-auto shadow-sm border border-orange-100">
-              <MapPin className="w-12 h-12 text-orange-600" />
-            </div>
-            <div className="space-y-3">
-              <h3 className="text-3xl font-black text-slate-900 tracking-tight">Safar Mukamal?</h3>
-              <p className="text-slate-600 leading-relaxed">
-                {displayType === 'confirm_complete' 
-                  ? <>Kia apka safar <span className="font-bold text-slate-900">{otherUserRole} {task.otherUser?.name || 'User'}</span> k sath Mukamal hua? Unhon ne ride mukammal honay ka status diya hai.</>
-                  : <>Kia apka safar <span className="font-bold text-slate-900">{otherUserRole} {task.otherUser?.name || 'User'}</span> k sath Mukamal hua?</>
-                }
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 pt-2">
-              <Button className="h-16 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-xl font-black shadow-lg shadow-emerald-200 transition-all active:scale-95" onClick={onConfirm}>Haan, Mukamal Hua</Button>
-              <Button variant="ghost" className="text-slate-400 font-bold hover:text-slate-600" onClick={onClose}>Wapas</Button>
-            </div>
-          </div>
-        )}
-
-        {displayType === 'start_success' && (
-          <div className="p-10 text-center space-y-8 relative">
-            <div className="w-28 h-28 bg-blue-50 rounded-[2rem] flex items-center justify-center mx-auto shadow-sm border border-blue-100 animate-pulse">
-              <Sparkles className="w-16 h-16 text-blue-600" />
-            </div>
-            <div className="space-y-4">
-              <h3 className="text-4xl font-black text-blue-600 tracking-tighter">AlhamduLillah</h3>
-              <div className="space-y-4 text-slate-600 leading-relaxed">
-                <p className="font-medium text-lg">Keh aap ka safar shuru hua.</p>
-                <p className="text-slate-500">
-                  Aap ka safar kheriat se ho, <br/>
-                  <span className="font-bold text-slate-900">{user?.displayName || 'User'}</span> Apna khyal rakhen.
-                </p>
-              </div>
-            </div>
-            <Button className="w-full h-16 rounded-2xl bg-blue-600 hover:bg-blue-700 text-xl font-black shadow-xl transition-all active:scale-95" onClick={handleFinalAction}>Allah Haafiz</Button>
-          </div>
-        )}
-
-        {displayType === 'success' && (
-          <div className="p-10 text-center space-y-8 relative">
-            <div className="w-28 h-28 bg-emerald-50 rounded-[2rem] flex items-center justify-center mx-auto shadow-sm border border-emerald-100 animate-pulse">
-              <CheckCircle2 className="w-16 h-16 text-emerald-600" />
-            </div>
-            <div className="space-y-4">
-              <h3 className="text-4xl font-black text-emerald-600 tracking-tighter">AlhamduLillah</h3>
-              <div className="space-y-4 text-slate-600 leading-relaxed">
-                <p className="font-medium">Keh aap apni manzil ko kamyaabi se phunch gay.</p>
-                <p className="text-sm">
-                  Ab jab bhi safar krna ho to <span className="font-black text-blue-600">EasyTravel</span> ap k lye har waqt Haazir hai.
-                </p>
-                <p className="text-lg">
-                  <span className="font-black text-slate-900">{user?.displayName || 'User'}</span> Apna khyal rakhen
-                </p>
-              </div>
-            </div>
-            <Button className="w-full h-16 rounded-2xl bg-slate-900 hover:bg-black text-xl font-black shadow-xl transition-all active:scale-95" onClick={handleFinalAction}>Allah Haafiz</Button>
-          </div>
-        )}
-      </motion.div>
-    </div>
-  );
-}
-
 function NewBookingCard({ 
   booking, 
   user, 
   onAction,
-  onStartRide,
   setView
 }: { 
   booking: Booking, 
   user: User | null, 
   onAction: (id: string, status: 'confirmed' | 'cancelled') => void,
-  onStartRide?: () => void,
   setView: (v: any, item?: any) => void
 }) {
   const isDriver = user?.uid === booking.driverId;
@@ -1973,12 +1605,6 @@ function NewBookingCard({
 
           {booking.status === 'confirmed' && (
             <div className="flex flex-col gap-3 pt-2">
-              <Button 
-                className="w-full h-14 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg shadow-blue-200 transition-all active:scale-95"
-                onClick={onStartRide}
-              >
-                Safar Shuru Hua
-              </Button>
               <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl text-center">
                 <p className="text-emerald-700 font-bold text-xs flex items-center justify-center gap-2">
                   <CheckCircle2 className="w-4 h-4" />
@@ -2712,50 +2338,8 @@ function Dashboard({
   }, [activeBookings, activeRides, now]);
 
   const rewardTasks = useMemo(() => {
-    if (!user) return [];
-    const tasks: any[] = [];
-    activeRides.forEach(ride => {
-      // Don't show completed or cancelled rides in Active Rides
-      if (ride.status === 'completed' || ride.status === 'cancelled' || ride.isDeleted) return;
-
-      const isDriver = user.uid === ride.driverId;
-      Object.entries(ride.rewardStatus || {}).forEach(([pId, status]: [string, any]) => {
-        if (status.rewardIssued) return;
-
-        const rideTime = parseRideDate(ride.date, ride.time).getTime();
-        const isStarted = status.startTimeConfirmed;
-        const timePassed = now.getTime() >= rideTime;
-
-        if (isStarted || timePassed) {
-          const isPassenger = user.uid === pId;
-          if (isDriver || isPassenger) {
-            tasks.push({
-              ride,
-              passengerId: pId,
-              status,
-              isDriver
-            });
-          }
-        }
-      });
-    });
-    return tasks;
-  }, [activeRides, user, now]);
-
-  const handleStartRideFromBooking = (booking: Booking) => {
-    const ride = activeRides.find(r => r.id === booking.rideId);
-    if (!ride) return;
-
-    onCompleteRide({
-      ride,
-      passengerId: booking.passengerId,
-      type: 'start',
-      otherUser: { 
-        name: user?.uid === ride.driverId ? booking.passengerName : ride.driverName,
-        id: (user?.uid === ride.driverId ? booking.passengerId : ride.driverId).substring(0, 4)
-      }
-    });
-  };
+    return [];
+  }, []);
 
   if (showLiveMap) {
     return (
@@ -3092,85 +2676,9 @@ function Dashboard({
                 booking={booking} 
                 user={user} 
                 onAction={onUpdateBookingStatus} 
-                onStartRide={() => handleStartRideFromBooking(booking)}
                 setView={setView}
               />
             ))}
-          </div>
-        </div>
-      )}
-
-      {rewardTasks.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider px-1">Active Rides</h3>
-          <div className="grid grid-cols-1 gap-3">
-            {rewardTasks.map((task, idx) => {
-              const { ride, passengerId, status, isDriver } = task;
-              const myConfirmed = isDriver ? status.driverConfirmed : status.passengerConfirmed;
-              const otherConfirmed = isDriver ? status.passengerConfirmed : status.driverConfirmed;
-
-              return (
-                <Card key={`${ride.id}-${passengerId}-${idx}`} className="border-none shadow-md overflow-hidden bg-white border-l-4 border-blue-500">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="bg-blue-50 p-2 rounded-xl">
-                          {isDriver ? <Users className="w-5 h-5 text-blue-600" /> : <Car className="w-5 h-5 text-blue-600" />}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-slate-900 truncate">
-                            {isDriver ? `Passenger: ${status.name || 'User'}` : `${ride.origin} to ${ride.destination}`}
-                            {otherConfirmed && <span className="ml-2 text-[10px] text-emerald-600 font-normal">(Mukamal ✓)</span>}
-                          </p>
-                          <p className="text-[10px] text-slate-500">
-                            {ride.origin} to {ride.destination}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        {!status.startTimeConfirmed ? (
-                          <Button 
-                            size="sm" 
-                            className="bg-blue-600 hover:bg-blue-700 h-8 rounded-lg text-xs font-bold px-3"
-                            onClick={() => onCompleteRide({
-                              ride,
-                              passengerId,
-                              type: 'start',
-                              otherUser: { 
-                                name: isDriver ? (status.name || 'User') : ride.driverName,
-                                id: (isDriver ? passengerId : ride.driverId).substring(0, 4)
-                              }
-                            })}
-                          >
-                            Safar Shuru Hua
-                          </Button>
-                        ) : !myConfirmed ? (
-                          <Button 
-                            size="sm" 
-                            className="bg-emerald-600 hover:bg-emerald-700 h-8 rounded-lg text-xs font-bold px-3"
-                            onClick={() => onCompleteRide({
-                              ride,
-                              passengerId,
-                              type: otherConfirmed ? 'confirm_complete' : 'complete',
-                              otherUser: { 
-                                name: isDriver ? status.name : ride.driverName,
-                                id: (isDriver ? passengerId : ride.driverId).substring(0, 4)
-                              }
-                            })}
-                          >
-                            Safar Mukamal
-                          </Button>
-                        ) : (
-                          <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200 h-8 px-3 rounded-lg">
-                            {otherConfirmed ? 'Processing...' : 'Intezar...'}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
           </div>
         </div>
       )}
