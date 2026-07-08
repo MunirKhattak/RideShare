@@ -1097,7 +1097,7 @@ export default function App() {
   const renderView = () => {
     switch (view) {
       case 'main':
-        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} travelScope={travelScope} />;
+        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} travelScope={travelScope} onBack={() => setTravelScope(null)} />;
       case 'register': {
         let defaultRegRole: 'driver' | 'passenger' = (profile?.role as 'driver' | 'passenger') || 'passenger';
         try {
@@ -1155,7 +1155,7 @@ export default function App() {
       case 'privacy_policy':
         return <PrivacyPolicy setView={setView} />;
       default:
-        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} travelScope={travelScope} />;
+        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} travelScope={travelScope} onBack={() => setTravelScope(null)} />;
     }
   };
 
@@ -1622,7 +1622,7 @@ function NewBookingCard({
   );
 }
 
-function MainPage({ setView, setProfile, user, profile, travelScope }: { setView: (v: any, item?: any) => void, setProfile: (p: any) => void, user: User | null, profile: UserProfile | null, travelScope?: 'intercity' | 'intracity' | null }) {
+function MainPage({ setView, setProfile, user, profile, travelScope, onBack }: { setView: (v: any, item?: any) => void, setProfile: (p: any) => void, user: User | null, profile: UserProfile | null, travelScope?: 'intercity' | 'intracity' | null, onBack?: () => void }) {
   const handleRoleSelection = async (role: 'driver' | 'passenger') => {
     // If user is already logged in, update their role in the profile
     if (user && profile) {
@@ -1645,7 +1645,22 @@ function MainPage({ setView, setProfile, user, profile, travelScope }: { setView
   };
 
   return (
-    <div className="space-y-6 py-6">
+    <div className="space-y-4 pt-1 pb-4">
+      {onBack && (
+        <div className="px-4 flex items-center justify-between">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={onBack}
+            className="w-10 h-10 rounded-full hover:bg-slate-100 active:scale-95 transition-all flex items-center justify-center bg-white shadow-md border border-slate-100 shrink-0"
+          >
+            <ArrowLeft className="w-5 h-5 text-slate-700" />
+          </Button>
+          <span className="text-xs font-bold text-slate-500 bg-slate-100/90 px-3.5 py-1.5 rounded-full border border-slate-200/50 shadow-xs tracking-wide">
+            {travelScope === 'intracity' ? 'Local District' : 'City-To-City'}
+          </span>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-4">
         <motion.div
           whileHover={{ scale: 1.02, translateY: -5 }}
@@ -5961,7 +5976,10 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
               <CardTitle className="text-3xl font-bold tracking-tight leading-tight">
                 CITY-TO-CITY Safar Karna Hai
               </CardTitle>
-              <CardDescription className="text-blue-100 mt-6 text-sm md:text-base font-bold tracking-wide leading-relaxed space-y-1 block">
+              <div className="text-blue-200 mt-6 text-xs font-semibold tracking-wide uppercase opacity-90">
+                Maslan (For Example),
+              </div>
+              <CardDescription className="text-blue-100 mt-2 text-sm md:text-base font-bold tracking-wide leading-relaxed space-y-1 block">
                 <span>Karak se Islamabad</span><br />
                 <span>Karak se Peshawar</span><br />
                 <span>Islamabad se Karak etc</span>
@@ -5993,10 +6011,16 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
                 <Navigation className="w-6 h-6 text-white animate-bounce" />
               </div>
               <CardTitle className="text-3xl font-bold tracking-tight leading-tight">
-                District/City k andar Safar Karna Hai
+                District / City k Andar Local Safar krna hai
               </CardTitle>
-              <CardDescription className="text-emerald-100 mt-6 text-sm md:text-base font-bold tracking-wide leading-relaxed">
-                Ek jaga se Dusri jaga
+              <div className="text-emerald-200 mt-6 text-xs font-semibold tracking-wide uppercase opacity-90">
+                Maslan (For Example)
+              </div>
+              <CardDescription className="text-emerald-100 mt-2 text-sm md:text-base font-bold tracking-wide leading-relaxed space-y-1 block">
+                <span>Karak City se Takhte Nasrati</span><br />
+                <span>Bahadar Khel se Karak City</span><br />
+                <span>Karak se Sabir Abad</span><br />
+                <span>Latamber se Karak etc</span>
               </CardDescription>
             </CardHeader>
             <div className="px-8 pb-8 pt-0 relative z-10">
