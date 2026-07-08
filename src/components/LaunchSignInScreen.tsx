@@ -262,28 +262,41 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
                 <CardContent className="space-y-4 px-6 pb-6 pt-4">
                   {/* Continue with Google button with a subtle popup movement */}
                   <motion.div
-                    initial={{ scale: 0.96, opacity: 0.9 }}
-                    animate={{ scale: [0.96, 1.015, 1], opacity: 1 }}
+                    initial={{ scale: 0.9, opacity: 0, y: 12 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
                     transition={{ 
-                      duration: 0.6, 
-                      ease: "easeOut",
-                      times: [0, 0.6, 1]
+                      type: "spring",
+                      stiffness: 200,
+                      damping: 18,
+                      delay: 0.1
                     }}
-                    whileHover={{ scale: 1.025, y: -1 }}
-                    whileTap={{ scale: 0.985, y: 1 }}
                   >
-                    <Button 
-                      onClick={handleGoogleSignIn} 
-                      disabled={isSigningIn}
-                      className="w-full py-6 text-base font-extrabold rounded-xl gap-3 bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-md transition-all duration-200 h-12"
+                    <motion.div
+                      animate={{
+                        scale: [1, 1.025, 1],
+                      }}
+                      transition={{
+                        duration: 2.4,
+                        repeat: Infinity,
+                        repeatType: "reverse",
+                        ease: "easeInOut"
+                      }}
+                      whileHover={{ scale: 1.04, y: -1 }}
+                      whileTap={{ scale: 0.98, y: 1 }}
                     >
-                      {isSigningIn ? (
-                        <div className="w-5 h-5 border-2 border-slate-800 border-t-transparent rounded-full animate-spin"></div>
-                      ) : (
-                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-                      )}
-                      Continue with Google
-                    </Button>
+                      <Button 
+                        onClick={handleGoogleSignIn} 
+                        disabled={isSigningIn}
+                        className="w-full py-6 text-base font-extrabold rounded-xl gap-3 bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-md transition-all duration-200 h-12"
+                      >
+                        {isSigningIn ? (
+                          <div className="w-5 h-5 border-2 border-slate-800 border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+                        )}
+                        Continue with Google
+                      </Button>
+                    </motion.div>
                   </motion.div>
                 </CardContent>
               </Card>
