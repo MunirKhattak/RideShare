@@ -327,25 +327,7 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
                     </motion.div>
                   </motion.div>
 
-                  {/* Offline Backup Fast-Track Button */}
-                  <motion.div
-                    initial={{ scale: 0.9, opacity: 0, y: 12 }}
-                    animate={{ scale: 1, opacity: 1, y: 0 }}
-                    transition={{ 
-                      type: "spring",
-                      stiffness: 200,
-                      damping: 18,
-                      delay: 0.2
-                    }}
-                  >
-                    <Button 
-                      variant="outline"
-                      onClick={handleOfflineGuestSignIn}
-                      className="w-full py-5 text-xs font-bold rounded-xl text-blue-600 hover:text-blue-700 bg-blue-50/50 hover:bg-blue-50 transition-all duration-200 mt-2 border-dashed border-blue-200"
-                    >
-                      Baghair Google Login ke Chalaayein (Demo Guest)
-                    </Button>
-                  </motion.div>
+
                 </CardContent>
               </Card>
             </motion.div>
