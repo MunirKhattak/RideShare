@@ -35,9 +35,10 @@ interface WalletModalProps {
   onClose: () => void;
   driverName?: string;
   profile?: UserProfile;
+  onShowAd?: () => void;
 }
 
-export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan", profile }: WalletModalProps) {
+export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan", profile, onShowAd }: WalletModalProps) {
   // Current values state for active user
   const [walletBalance, setWalletBalance] = useState<number>(0); 
 
@@ -165,6 +166,8 @@ export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan",
       
       // Instead of direct balance add, we show success modal or alert
       alert('Aapki recharge request Admin ko bhej di gayi hai. Approve hone par balance add ho jayega.');
+
+      if (onShowAd) onShowAd();
 
     } catch (error) {
       console.error("Error submitting recharge:", error);

@@ -983,6 +983,8 @@ export default function App() {
       await addDoc(collection(db, 'bookings'), bookingData);
       setBookingTask(null);
       toast.success("Booking request bhej di gayi hai!");
+      // Show Interstitial Ad after successful booking request
+      setShowInterstitialAd(true);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'bookings');
     } finally {
@@ -1119,12 +1121,13 @@ export default function App() {
             onUpdateBookingStatus={handleUpdateBookingStatus}
             isOnline={isOnline}
             travelScope={travelScope}
+            onShowAd={() => setShowInterstitialAd(true)}
           />
         );
       case 'post':
-        return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} travelScope={travelScope} />;
+        return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} travelScope={travelScope} onShowAd={() => setShowInterstitialAd(true)} />;
       case 'edit_post':
-        return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} editItem={selectedItem} travelScope={travelScope} />;
+        return <PostForm user={user} profile={profile} setView={setView} type={profile?.role === 'driver' ? 'ride' : 'request'} editItem={selectedItem} travelScope={travelScope} onShowAd={() => setShowInterstitialAd(true)} />;
       case 'search':
         return <RouteSearch setView={setView} userRole={(profile?.role as 'driver' | 'passenger') || 'passenger'} onWhatsAppClick={setWaModalData} onBookClick={setBookingTask} travelScope={travelScope} />;
       case 'profile_view':
@@ -2225,7 +2228,8 @@ function Dashboard({
   activeBookings,
   onUpdateBookingStatus,
   isOnline,
-  travelScope
+  travelScope,
+  onShowAd
 }: { 
   user: User | null, 
   profile: UserProfile | null, 
@@ -2235,7 +2239,8 @@ function Dashboard({
   activeBookings: Booking[],
   onUpdateBookingStatus: (id: string, status: 'confirmed' | 'cancelled') => void,
   isOnline: boolean,
-  travelScope: 'intercity' | 'intracity' | null
+  travelScope: 'intercity' | 'intracity' | null,
+  onShowAd?: () => void
 }) {
   const userRole = profile?.role || 'passenger';
   const [activeRidesList, setActiveRidesList] = useState<any[]>([]);
@@ -2765,6 +2770,7 @@ function Dashboard({
         onClose={() => setShowWalletModal(false)} 
         driverName={profile?.displayName || "Karak Jan"} 
         profile={profile}
+        onShowAd={onShowAd}
       />
     </div>
   );
@@ -3445,7 +3451,7 @@ function LoadingSpinner() {
   );
 }
 
-function PostForm({ user, profile, setView, type, editItem, travelScope }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, type: 'ride' | 'request', editItem?: any, travelScope?: 'intercity' | 'intracity' | null }) {
+function PostForm({ user, profile, setView, type, editItem, travelScope, onShowAd }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, type: 'ride' | 'request', editItem?: any, travelScope?: 'intercity' | 'intracity' | null, onShowAd?: () => void }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isIntracity = travelScope === 'intracity';
 
@@ -3523,6 +3529,7 @@ function PostForm({ user, profile, setView, type, editItem, travelScope }: { use
       } else {
         await addDoc(collection(db, collectionName), data);
         toast.success(isIntracity ? 'Local district post lag gaya!' : 'Safar post ho gaya!');
+        if (onShowAd) onShowAd();
       }
       setView('dashboard');
     } catch (error) {
