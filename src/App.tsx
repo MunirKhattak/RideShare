@@ -560,13 +560,12 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       try {
-        setUser(currentUser);
-        if (unsubProfile) {
-          unsubProfile();
-          unsubProfile = null;
-        }
-
         if (currentUser) {
+          setUser(currentUser);
+          if (unsubProfile) {
+            unsubProfile();
+            unsubProfile = null;
+          }
           registerFCMToken(currentUser);
           
           // Listen to the user profile in real-time to detect deletion by administrator instantly
@@ -596,7 +595,20 @@ export default function App() {
             setLoading(false);
           });
         } else {
-          setProfile(null);
+          // Check if there is a local mock user first to avoid overwriting guest session
+          const savedMockUser = localStorage.getItem('easytravel_mock_user');
+          const savedMockProfile = localStorage.getItem('easytravel_mock_profile');
+          if (savedMockUser) {
+            setUser(JSON.parse(savedMockUser) as any);
+            if (savedMockProfile) {
+              setProfile(JSON.parse(savedMockProfile) as any);
+            } else {
+              setProfile(null);
+            }
+          } else {
+            setUser(null);
+            setProfile(null);
+          }
           setLoading(false);
         }
       } catch (error) {
@@ -1088,6 +1100,7 @@ export default function App() {
       <LaunchSignInScreen 
         user={user} 
         profile={profile} 
+        setUser={setUser}
         setProfile={setProfile} 
         setView={setView} 
       />

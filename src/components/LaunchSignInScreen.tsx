@@ -23,11 +23,12 @@ import { toast } from 'sonner';
 interface LaunchSignInScreenProps {
   user: User | null;
   profile: UserProfile | null;
+  setUser?: (u: any) => void;
   setProfile: (p: UserProfile | null) => void;
   setView: (v: string) => void;
 }
 
-export default function LaunchSignInScreen({ user, profile, setProfile, setView }: LaunchSignInScreenProps) {
+export default function LaunchSignInScreen({ user, profile, setUser, setProfile, setView }: LaunchSignInScreenProps) {
   const [step, setStep] = useState<1 | 2>(1); // 1 = Sign In, 2 = Complete Profile
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,6 +88,33 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
       }
     } finally {
       setIsSigningIn(false);
+    }
+  };
+
+  const handleOfflineGuestSignIn = () => {
+    try {
+      const mockUid = `mock-${Math.floor(100000 + Math.random() * 900000)}`;
+      const mockUser = {
+        uid: mockUid,
+        displayName: 'Demo Guest User',
+        email: 'demo@easytravel.com',
+        photoURL: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150'
+      };
+      
+      // Save to localStorage
+      localStorage.setItem('easytravel_mock_user', JSON.stringify(mockUser));
+      
+      // Dispatch state update directly
+      if (setUser) {
+        setUser(mockUser as any);
+      }
+      
+      // Dispatch event to notify App component about auth change
+      window.dispatchEvent(new Event('easytravel_mock_auth_changed'));
+      
+      toast.success("Demo Guest mode kamyab! Apne profile ki maloomat darj karein.");
+    } catch (err) {
+      toast.error("Offline login fail ho gaya.");
     }
   };
 
@@ -297,6 +325,26 @@ export default function LaunchSignInScreen({ user, profile, setProfile, setView 
                         Continue with Google
                       </Button>
                     </motion.div>
+                  </motion.div>
+
+                  {/* Offline Backup Fast-Track Button */}
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0, y: 12 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    transition={{ 
+                      type: "spring",
+                      stiffness: 200,
+                      damping: 18,
+                      delay: 0.2
+                    }}
+                  >
+                    <Button 
+                      variant="outline"
+                      onClick={handleOfflineGuestSignIn}
+                      className="w-full py-5 text-xs font-bold rounded-xl text-blue-600 hover:text-blue-700 bg-blue-50/50 hover:bg-blue-50 transition-all duration-200 mt-2 border-dashed border-blue-200"
+                    >
+                      Baghair Google Login ke Chalaayein (Demo Guest)
+                    </Button>
                   </motion.div>
                 </CardContent>
               </Card>
