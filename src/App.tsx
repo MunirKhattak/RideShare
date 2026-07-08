@@ -2401,7 +2401,7 @@ function Dashboard({
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
             <Badge className={userRole === 'driver' ? 'bg-blue-600' : 'bg-orange-500'}>
-              {userRole === 'driver' ? 'Car Owner' : 'Passenger'}
+              {userRole === 'driver' ? (profile?.vehicleType === 'Bike' ? 'Bike Owner' : 'Car Owner') : 'Passenger'}
             </Badge>
           </div>
           
