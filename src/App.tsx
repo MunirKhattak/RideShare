@@ -1749,25 +1749,90 @@ function PrivacyPolicy({ setView }: { setView: (v: any) => void }) {
         </Button>
         <div className="flex flex-col flex-1">
           <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Privacy Policy</h2>
-          <p className="text-slate-500 text-xs mt-0.5">Last Updated: June 13, 2026 • Version 2.2.0</p>
+          <p className="text-slate-500 text-xs mt-0.5">Last Updated: July 09, 2026 • Version 3.0.0 (Play Store & App Store Compliant)</p>
         </div>
       </div>
 
-      <Card className="border-none shadow-xl rounded-[2.5rem] overflow-hidden bg-white">
+      <Card className="border-none shadow-xl rounded-[2rem] overflow-hidden bg-white">
         <CardContent className="p-6 md:p-8 space-y-6">
-          <p className="text-slate-600 text-sm md:text-base leading-relaxed font-outfit text-justify">
-            Welcome to EasyTravel. We are dedicated to respecting and protecting your privacy under strict confidentiality rules. When you use our application to match, list, or coordinate travels, we collect minimal necessary identity markers such as your name, email, profile picture, travel roles, contact numbers, and device indicators including Firebase Cloud Messaging (FCM) tokens that are processed solely for immediate system notifications about rides or messages. To facilitate coordination, your verified phone and WhatsApp contact coordinates are matched exclusively and shared with your confirmed car owners or passengers without being visible to general external guests. We commit that we never sell, lease, rent, or trade your personal information or contact directory to external marketing networks. To protect user autonomy, we support absolute immediate permanent purging; executing profile deletion instantly and permanently removes all your data from our active Google Firestore databases. While we carry out general moderation and handle safety complaints, users operate as part of a peer marketplace and should always cross-match coordinates, inspect licenses, share active routes with trusted relatives, and report any uncomfortable interactions via our forms.
-          </p>
+          <div className="border-b border-slate-100 pb-4">
+            <h3 className="text-lg font-bold text-slate-800">1. Introduction</h3>
+            <p className="text-slate-600 text-sm leading-relaxed mt-2 text-justify">
+              Welcome to EasyTravel. We are dedicated to protecting your personal data and respecting your privacy. This Privacy Policy explains how we collect, use, share, and protect your information when you use our mobile application and services, complying fully with Google Play Console and Apple App Store Developer Guidelines.
+            </p>
+          </div>
+
+          <div className="border-b border-slate-100 pb-4">
+            <h3 className="text-lg font-bold text-slate-800">2. Information We Collect</h3>
+            <p className="text-slate-600 text-sm leading-relaxed mt-2 text-justify">
+              To provide a seamless ride-sharing and travel matching experience, we collect the following types of information:
+            </p>
+            <ul className="list-disc pl-5 mt-2 text-slate-600 text-sm space-y-1.5">
+              <li><strong>Profile Information:</strong> Name, Email Address, and Profile Picture (retrieved securely via Google Sign-In), as well as your selected travel role (Driver or Passenger).</li>
+              <li><strong>Contact Coordinates:</strong> Phone Number and WhatsApp Number (manually provided by you during registration to enable driver-passenger coordination).</li>
+              <li><strong>Location Data:</strong> When active/sharing a ride, we access your device's precise real-time GPS location (if granted) to display your position to matched users on the live map.</li>
+              <li><strong>Device &amp; Notification Data:</strong> Device indicators and Firebase Cloud Messaging (FCM) tokens to deliver push notifications about active rides, match statuses, and messages.</li>
+            </ul>
+          </div>
+
+          <div className="border-b border-slate-100 pb-4">
+            <h3 className="text-lg font-bold text-slate-800">3. How We Use Your Data</h3>
+            <p className="text-slate-600 text-sm leading-relaxed mt-2 text-justify">
+              We process your data purely for operational, matchmaking, and safety purposes:
+            </p>
+            <ul className="list-disc pl-5 mt-2 text-slate-600 text-sm space-y-1.5">
+              <li>To match riders with drivers traveling on the same routes.</li>
+              <li>To display live active positions on the interactive map for safety and coordinate pickups.</li>
+              <li>To send real-time chat messages and notifications regarding travel schedules.</li>
+              <li>To maintain platform security, prevent fraudulent entries, and process safety complaints.</li>
+            </ul>
+          </div>
+
+          <div className="border-b border-slate-100 pb-4">
+            <h3 className="text-lg font-bold text-slate-800">4. Information Sharing &amp; Security</h3>
+            <p className="text-slate-600 text-sm leading-relaxed mt-2 text-justify">
+              Your contact details (Phone, WhatsApp) are <strong>never</strong> sold, rented, leased, or traded with marketing agencies or third parties. They are exclusively matched and shared with your confirmed car owner or passenger to facilitate coordination. External guests or unauthenticated users cannot view your contact coordinates.
+            </p>
+          </div>
+
+          <div className="border-b border-slate-100 pb-4">
+            <h3 className="text-lg font-bold text-slate-800">5. Complete Data Purge &amp; Account Deletion</h3>
+            <p className="text-slate-600 text-sm leading-relaxed mt-2 text-justify">
+              We highly respect user autonomy. Under Play Store and App Store policies, you have the absolute right to delete your data at any time. When you select the <strong>Delete Profile</strong> option from your Profile Settings, we execute an immediate, permanent purge that deletes all your personal data, rides, and logs instantly from our active Google Firestore databases.
+            </p>
+          </div>
+
+          <div className="border-b border-slate-100 pb-4">
+            <h3 className="text-lg font-bold text-slate-800">6. Required App Permissions</h3>
+            <p className="text-slate-600 text-sm leading-relaxed mt-2 text-justify">
+              For functional and safety purposes, the app requests the following system permissions:
+            </p>
+            <ul className="list-disc pl-5 mt-2 text-slate-600 text-sm space-y-1.5">
+              <li><strong>Precise Location (GPS):</strong> To render active real-time markers on the map layer.</li>
+              <li><strong>Camera / Media Access:</strong> Optional, to upload profile photos or vehicle license documents for driver verification.</li>
+              <li><strong>Notifications:</strong> To deliver real-time messages and active booking status changes.</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 className="text-lg font-bold text-slate-800">7. Contact &amp; Support</h3>
+            <p className="text-slate-600 text-sm leading-relaxed mt-2 text-justify">
+              For any privacy queries, account deletion requests, or technical support, please contact our Compliance Officer at:
+            </p>
+            <p className="text-blue-600 text-sm font-semibold mt-2">
+              munirkhattak.pk@gmail.com
+            </p>
+          </div>
 
           <div className="pt-6">
             <Button className="w-full bg-blue-600 hover:bg-blue-700 h-14 rounded-2xl font-black text-lg gap-2 shadow-lg shadow-blue-100 active:scale-95 transition-all text-white" onClick={() => setView('main')}>
-              <Check className="w-6 h-6" /> Wapis Jayen
+              <Check className="w-6 h-6" /> Samajh Gaya (Continue)
             </Button>
           </div>
         </CardContent>
       </Card>
       
-      <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">EasyTravel Safety Program • Compliance Department</p>
+      <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest">EasyTravel Safety &amp; App Store Compliance Division</p>
     </div>
   );
 }
