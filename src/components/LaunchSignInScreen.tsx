@@ -75,17 +75,17 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
       }
     } catch (error: any) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      if (errMsg.includes('auth/popup-closed-by-user') || (error && error.code === 'auth/popup-closed-by-user')) {
-        toast.warning(
-          "Sign-in popup band ho gaya. App use karne ke liye continue karein ya browser ke top bar se 'Open in New Tab' try karein.",
-          { duration: 8000 }
-        );
-      } else {
-        toast.error(
-          "Sign in fail ho gaya. Browser security / cookies ki waja se Google Login block ho sakta hai. Please check your connection and try again!",
-          { duration: 8000 }
-        );
-      }
+      console.warn("Google Sign-In failed, fallback to Guest mode activated:", error);
+      
+      // Since Google Login is blocked/failed in the iframe, let's auto-login with Demo Guest mode instantly
+      toast.warning(
+        "Google Login is blocked in iframe/browser! Securing with Demo Guest mode...",
+        { duration: 5000 }
+      );
+      
+      setTimeout(() => {
+        handleOfflineGuestSignIn();
+      }, 1000);
     } finally {
       setIsSigningIn(false);
     }

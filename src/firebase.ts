@@ -104,7 +104,7 @@ export const signInWithGoogle = async () => {
     console.log('Google sign in successful:', result.user.uid);
     return result.user;
   } catch (error) {
-    console.error('Error signing in with Google', error);
+    console.warn('Google sign in bypass/failure info:', error);
     throw error;
   }
 };
