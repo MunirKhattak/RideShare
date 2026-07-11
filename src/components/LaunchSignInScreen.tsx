@@ -50,8 +50,8 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
       });
       setStep(2);
     } else if (user && profile) {
-      // Completed, go to main dashboard
-      setView('dashboard');
+      // Completed, go to main landing page
+      setView('main');
     }
   }, [user, profile, setView]);
 
@@ -67,7 +67,7 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
           const p = userDoc.data() as UserProfile;
           setProfile(p);
           toast.success(`Khush Amdeed, ${p.displayName}!`);
-          setView('dashboard');
+          setView('main');
         } else {
           // Proceed to profile completion (handled by useEffect)
           setStep(2);
@@ -154,7 +154,7 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
         localStorage.setItem('easytravel_mock_profile', JSON.stringify(newProfile));
         setProfile(newProfile);
         toast.success(`Registration mukammal ho gayi! ID: ${customId}`);
-        setView('dashboard');
+        setView('main');
       } else {
         try {
           const finalProfile = {
@@ -164,14 +164,14 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
           await setDoc(doc(db, 'users', user.uid), finalProfile);
           setProfile(newProfile);
           toast.success(`Registration mukammal ho gayi! ID: ${customId}`);
-          setView('dashboard');
+          setView('main');
         } catch (dbErr) {
           console.warn("Could not save profile to Firestore, saving locally as backup:", dbErr);
           localStorage.setItem(`easytravel_mock_profile_${user.uid}`, JSON.stringify(newProfile));
           localStorage.setItem('easytravel_mock_profile', JSON.stringify(newProfile));
           setProfile(newProfile);
           toast.success(`Registration locally save ho gayi! ID: ${customId}`);
-          setView('dashboard');
+          setView('main');
         }
       }
     } catch (error) {

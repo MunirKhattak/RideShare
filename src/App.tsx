@@ -1820,7 +1820,7 @@ function PrivacyPolicy({ setView }: { setView: (v: any) => void }) {
               For any privacy queries, account deletion requests, or technical support, please contact our Compliance Officer at:
             </p>
             <p className="text-blue-600 text-sm font-semibold mt-2">
-              munirkhattak.pk@gmail.com
+              easytravelofficial.info@gmail.com
             </p>
           </div>
 
