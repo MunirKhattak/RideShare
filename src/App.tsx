@@ -2136,13 +2136,10 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
   );
 
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const handleDeleteAccount = async () => {
     if (!user) return;
-    const confirmDelete = window.confirm(
-      "Kya aap waqai apna profile aur tamam data mukammal tor par delete karna chahte hain?\n\nPlay Store aur App Store ke rules ke mutabiq aapka tamam data hamesha ke liye permanent delete kar diya jayega. Ye amal wapis nahi ho sakta!"
-    );
-    if (!confirmDelete) return;
 
     setIsDeleting(true);
     try {
@@ -2155,6 +2152,7 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
       // 3. Reset states and show success
       setProfile(null);
       setView('main');
+      setShowDeleteModal(false);
       toast.success("Aapka account aur tamam data hamesha ke liye delete kar diya gaya hai.");
     } catch (err: any) {
       console.error("Account self-deletion error:", err);
@@ -2342,7 +2340,7 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
                 type="button" 
                 variant="destructive" 
                 className="w-full bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border border-red-200 shadow-none font-bold"
-                onClick={handleDeleteAccount}
+                onClick={() => setShowDeleteModal(true)}
                 disabled={isDeleting}
               >
                 <Trash2 className="w-4 h-4 mr-2" /> {isDeleting ? 'Deleting Account...' : 'Delete Account'}
@@ -2351,6 +2349,55 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
           </form>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm border border-slate-100 relative overflow-hidden"
+            >
+              {/* Top Warning Badge */}
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-500 mb-4 animate-pulse">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">
+                  Account Delete Karein?
+                </h3>
+                <p className="text-sm text-slate-500 leading-relaxed mb-6">
+                  Kia aap waqai apna account delete krna chahte hain? Apka account hamesha k lye delete ho jyga aur ye amal wapis nahi ho sakta!
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-3">
+                <Button
+                  type="button"
+                  variant="default"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 rounded-xl shadow-md shadow-emerald-100 border-none"
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={isDeleting}
+                >
+                  Nahi, Wapis Jayen
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="w-full bg-red-600 hover:bg-red-700 text-white font-bold h-11 rounded-xl shadow-md shadow-red-100 border-none"
+                  onClick={handleDeleteAccount}
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? 'Deleting...' : 'Haan, Delete Karein'}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
