@@ -72,7 +72,8 @@ import {
   ChevronRight,
   ChevronDown,
   Wallet,
-  Edit
+  Edit,
+  Trash2
 } from 'lucide-react';
 import IntracityDemo, { LOCAL_LOCATIONS } from './components/IntracityDemo';
 import LiveActivePassengerMap from './components/LiveActivePassengerMap';
@@ -2134,6 +2135,35 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
     profile?.vehicleType || 'Car'
   );
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    const confirmDelete = window.confirm(
+      "Kya aap waqai apna profile aur tamam data mukammal tor par delete karna chahte hain?\n\nPlay Store aur App Store ke rules ke mutabiq aapka tamam data hamesha ke liye permanent delete kar diya jayega. Ye amal wapis nahi ho sakta!"
+    );
+    if (!confirmDelete) return;
+
+    setIsDeleting(true);
+    try {
+      // 1. Delete user profile from Firestore
+      await deleteDoc(doc(db, 'users', user.uid));
+      
+      // 2. Sign out
+      await logout();
+      
+      // 3. Reset states and show success
+      setProfile(null);
+      setView('main');
+      toast.success("Aapka account aur tamam data hamesha ke liye delete kar diya gaya hai.");
+    } catch (err: any) {
+      console.error("Account self-deletion error:", err);
+      toast.error("Account delete karne mein koi masla pesh aya: " + err.message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !profile) return;
@@ -2305,6 +2335,19 @@ function EditProfile({ user, profile, setView, setProfile }: { user: User | null
             <Button type="button" variant="outline" className="w-full" onClick={() => setView('dashboard')}>
               Cancel
             </Button>
+
+            {/* Data deletion option for Google Play Store & Apple App Store compliance */}
+            <div className="border-t border-slate-100 pt-4 mt-6">
+              <Button 
+                type="button" 
+                variant="destructive" 
+                className="w-full bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border border-red-200 shadow-none font-bold"
+                onClick={handleDeleteAccount}
+                disabled={isDeleting}
+              >
+                <Trash2 className="w-4 h-4 mr-2" /> {isDeleting ? 'Deleting Account...' : 'Delete Account'}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
