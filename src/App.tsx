@@ -6082,8 +6082,11 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
             transition={{ delay: 0.1 }}
             className="bg-blue-50/80 border border-blue-100 py-4 px-6 rounded-2xl shadow-sm text-center"
           >
-            <p className="text-base md:text-lg font-bold text-slate-800 tracking-tight">
-              <span className="font-black text-blue-600">Passenger</span> ho ya <span className="font-black text-blue-600">Car Owner</span> - Ab Apka Safar ' Hamari Zimedaari
+            <p className="text-[14.5px] sm:text-[17px] md:text-[19px] font-bold text-slate-800 tracking-tight leading-snug">
+              <span className="font-black text-blue-600">Passenger</span> ho, <span className="font-black text-blue-600">Car Owner</span> ho, ya <span className="font-black text-blue-600">Bike Owner</span>
+            </p>
+            <p className="text-sm sm:text-base md:text-lg font-bold text-slate-800 tracking-tight mt-1">
+              Ab Apka Safar 'Hamari Zimedaari'
             </p>
             <p className="text-[11px] md:text-sm font-bold text-slate-500 mt-2 whitespace-nowrap overflow-hidden text-ellipsis">
               Fauri Raabta - Araam Deh Safar - Kam Kharcha
@@ -6097,7 +6100,7 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
             className="bg-slate-50 border border-slate-200 py-3 px-6 rounded-xl text-center"
           >
             <p className="text-sm md:text-base font-semibold text-slate-600 leading-relaxed">
-              <span className="font-black text-slate-900">Car Owner</span> k pas Seats Khaali hain ? - Aur - <span className="font-black text-slate-900">Passenger</span> Kharab Transport System se Pareshaan hai ?
+              <span className="font-black text-slate-900">Car Owner</span> ya <span className="font-black text-slate-900">Bike Owner</span> k pas Seats Khaali hain ? - Aur - <span className="font-black text-slate-900">Passenger</span> Kharab Transport System se Pareshaan hai ?
             </p>
           </motion.div>
 
@@ -6108,7 +6111,7 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
             className="bg-emerald-50/40 border border-emerald-100/30 py-4 px-6 rounded-2xl text-center"
           >
             <p className="text-sm md:text-base text-slate-600 font-medium leading-relaxed">
-              Abhi <span className="font-bold text-emerald-700">EasyTravel</span> pe Search Karen ya Post Lagayen - <span className="font-black text-emerald-800">Car Owner</span> apna Fuel ka Kharcha Bachaen - <span className="font-black text-emerald-800">Passenger</span> apna Safar Araam Deh Banaaen
+              Abhi <span className="font-bold text-emerald-700">EasyTravel</span> pe Search Karen ya Post Lagayen - <span className="font-black text-emerald-800">Car Owner</span> aur <span className="font-black text-emerald-800">Bike Owner</span> apna Fuel ka Kharcha Bachaen, Munaafa Kamaen - <span className="font-black text-emerald-800">Passenger</span> apna Safar Araam Deh Banaaen
             </p>
           </motion.div>
         </div>
