@@ -84,6 +84,49 @@ import confetti from 'canvas-confetti';
 import LaunchSignInScreen from './components/LaunchSignInScreen';
 import WalletModal from './components/WalletModal';
 
+function Motorcycle({ className = "w-6 h-6", ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      {...props}
+    >
+      {/* Back wheel */}
+      <circle cx="5" cy="18" r="3" />
+      {/* Front wheel */}
+      <circle cx="19" cy="18" r="3" />
+      
+      {/* Exhaust pipe */}
+      <path d="M12 18H7.5" />
+      
+      {/* Front fork & Handlebars */}
+      <path d="M19 18l-4-11" />
+      <path d="M13.5 7H17" />
+      
+      {/* Rear swingarm */}
+      <path d="M5 18l3.5-4" />
+      
+      {/* Seat & Cowl */}
+      <path d="M4 14h5.5" />
+      {/* Tail line pointing up */}
+      <path d="M4 14l-1.5-2" />
+      
+      {/* Fuel tank */}
+      <path d="M9.5 14c1-3 3-4 5.5-2" />
+      
+      {/* Engine area structure */}
+      <path d="M8.5 14h6l.5-2H10" />
+      <path d="M11 14v2.5" />
+    </svg>
+  );
+}
+
 const trackInteraction = async (rideId: string, type: 'call' | 'whatsapp' | 'chat', collectionName: 'rides' | 'rideRequests') => {
   try {
     const docRef = doc(db, collectionName, rideId);
@@ -6171,15 +6214,23 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
             onClick={() => onSelect('intracity')}
           >
             <motion.div 
-              animate={{ x: [0, -6, 6, 0], y: [0, 5, -5, 0], rotate: [-12, -8, -16, -12] }}
+              animate={{ x: [0, -8, 8, 0], y: [0, 4, -4, 0] }}
               transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
-              className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"
+              className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity flex items-center gap-4"
             >
-              <Navigation className="w-32 h-32" />
+              <Motorcycle className="w-20 h-20 rotate-6" />
+              <Car className="w-24 h-24 -rotate-12" />
             </motion.div>
             <CardHeader className="p-8 relative z-10 flex-1">
-              <div className="bg-white/20 w-12 h-12 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-md">
-                <Navigation className="w-6 h-6 text-white animate-bounce" />
+              <div className="bg-white/20 w-12 h-12 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-md overflow-hidden relative">
+                <motion.div
+                  animate={{ x: [-60, 60] }}
+                  transition={{ repeat: Infinity, duration: 4.5, ease: "linear" }}
+                  className="flex items-center gap-12 absolute whitespace-nowrap"
+                >
+                  <Motorcycle className="w-5 h-5 text-white" />
+                  <Car className="w-5 h-5 text-white" />
+                </motion.div>
               </div>
               <CardTitle className="text-3xl font-bold tracking-tight leading-tight">
                 District / City k Andar Local Safar krna hai

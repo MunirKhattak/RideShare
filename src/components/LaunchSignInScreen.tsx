@@ -270,66 +270,125 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
               transition={{ duration: 0.25 }}
               className="space-y-4"
             >
-              {/* Card 1: The Problem Card (Halka Sa Red/Orange Warm Tint) */}
-              <Card className="border border-red-100 bg-[#FEF2F2] shadow-lg rounded-2xl p-2 transition-all duration-300">
-                <CardHeader className="text-center pb-3 pt-5 px-4">
-                  <CardTitle className="text-[14px] sm:text-[15px] font-extrabold text-slate-800 leading-snug px-2">
-                    Es Digital Daur Me Bhi Kharaab Transport aur Bhaari Karaaye Se Pareshan Hain?
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-
-              {/* Card 2: The Solution & Login Card (Pure White Card) */}
-              <Card className="border border-slate-100 bg-white shadow-xl rounded-2xl p-2 transition-all duration-300">
-                <CardHeader className="text-center pb-2 pt-6 px-6">
-                  <CardDescription className="text-[#333333] text-sm sm:text-base mt-1 leading-relaxed px-2 font-semibold">
-                    Ab pareshan hona chorh dein! <span className="text-blue-600 font-bold">EasyTravel</span> laya hai aik hi click me in sab maslon ka behtareen Digital Solution.
-                  </CardDescription>
-                </CardHeader>
-                
-                <CardContent className="space-y-4 px-6 pb-6 pt-4">
-                  {/* Continue with Google button with a subtle popup movement */}
+              {/* Card 1: EasyTravel Info Card with Animated Bike and Car */}
+              <Card className="border border-slate-100 bg-white shadow-xl rounded-2xl transition-all duration-300 relative overflow-hidden">
+                {/* Left Side (Top-Left): Animated Bike Badge */}
+                <div className="absolute top-3.5 left-3.5 z-10">
                   <motion.div
-                    initial={{ scale: 0.9, opacity: 0, y: 12 }}
-                    animate={{ scale: 1, opacity: 1, y: 0 }}
-                    transition={{ 
-                      type: "spring",
-                      stiffness: 200,
-                      damping: 18,
+                    className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center bg-orange-100 text-orange-600 rounded-full border border-orange-200 shadow-sm"
+                    animate={{
+                      y: [0, -3, 2, -2, 0],
+                      rotate: [0, -4, 4, -2, 0]
+                    }}
+                    transition={{
+                      duration: 2.2,
+                      repeat: Infinity,
+                      ease: "easeInOut"
+                    }}
+                  >
+                    <Bike className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </motion.div>
+                </div>
+
+                {/* Right Side (Top-Right): Animated Car Badge */}
+                <div className="absolute top-3.5 right-3.5 z-10">
+                  <motion.div
+                    className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center bg-blue-100 text-blue-600 rounded-full border border-blue-200 shadow-sm"
+                    animate={{
+                      y: [0, 2, -2, 1, 0],
+                      x: [0, -1, 1, 0],
+                      rotate: [0, 2, -2, 1, 0]
+                    }}
+                    transition={{
+                      duration: 2.5,
+                      repeat: Infinity,
+                      ease: "easeInOut",
                       delay: 0.1
                     }}
                   >
-                    <motion.div
-                      animate={{
-                        scale: [1, 1.025, 1],
-                      }}
-                      transition={{
-                        duration: 2.4,
-                        repeat: Infinity,
-                        repeatType: "reverse",
-                        ease: "easeInOut"
-                      }}
-                      whileHover={{ scale: 1.04, y: -1 }}
-                      whileTap={{ scale: 0.98, y: 1 }}
-                    >
-                      <Button 
-                        onClick={handleGoogleSignIn} 
-                        disabled={isSigningIn}
-                        className="w-full py-6 text-base font-extrabold rounded-xl gap-3 bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-md transition-all duration-200 h-12"
-                      >
-                        {isSigningIn ? (
-                          <div className="w-5 h-5 border-2 border-slate-800 border-t-transparent rounded-full animate-spin"></div>
-                        ) : (
-                          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-                        )}
-                        Continue with Google
-                      </Button>
-                    </motion.div>
+                    <Car className="w-5 h-5 sm:w-6 sm:h-6" />
                   </motion.div>
+                </div>
 
+                <CardContent className="p-5 sm:p-6 pt-16 relative">
+                  {/* Center Content: Structured Urdu/English text with requested styled words */}
+                  <div className="text-center space-y-4">
+                    <div className="space-y-1.5">
+                      <p className="text-slate-800 text-[13px] sm:text-sm font-bold leading-normal">
+                        <span className="text-emerald-600 font-extrabold">Passenger</span> Kharaab Transport se Pareshan?
+                      </p>
+                      <p className="text-slate-800 text-[13px] sm:text-sm font-bold leading-normal">
+                        <span className="text-blue-600 font-extrabold">Car</span> aur <span className="text-amber-600 font-extrabold">Bike Owners</span> Fuel k Kharchay k lye Pareshan?
+                      </p>
+                    </div>
 
+                    <p className="text-slate-600 text-[11px] sm:text-xs font-semibold leading-relaxed bg-rose-50/50 py-2.5 px-3 rounded-xl border border-rose-100/30">
+                      Ab pareshaan hona chorh den, Qk <span className="text-rose-600 font-extrabold">EasyTravel</span> le aya hai en saari Pareshanion ka behtareen solution!
+                    </p>
+
+                    <div className="pt-3 border-t border-slate-100 text-left text-[11px] sm:text-xs space-y-2 text-slate-700 max-w-[290px] sm:max-w-xs mx-auto">
+                      <div className="flex items-start gap-2">
+                        <span className="text-emerald-500 font-extrabold select-none mt-0.5">•</span>
+                        <p className="leading-snug">
+                          <span className="text-emerald-600 font-bold">Passengers</span> k liye Sasta aur <span className="text-purple-600 font-extrabold">Aramdeh</span> Safar
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-blue-500 font-extrabold select-none mt-0.5">•</span>
+                        <p className="leading-snug">
+                          <span className="text-blue-600 font-bold">Car Owner</span> aur <span className="text-amber-600 font-bold">Bike Owner</span> k liye Fuel ki <span className="text-indigo-600 font-extrabold">Bachat</span> aur Behtareen <span className="text-green-600 font-extrabold">Munaafa</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <p className="text-slate-500 text-[11px] sm:text-xs font-extrabold tracking-wide text-center">
+                        ✨ Sab kuch ek hi Platform Per ✨
+                      </p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
+
+              {/* Continue with Google button - moved outside of Card */}
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 12 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                transition={{ 
+                  type: "spring",
+                  stiffness: 260,
+                  damping: 16,
+                  delay: 0.05
+                }}
+                className="pt-2"
+              >
+                <motion.div
+                  animate={{
+                    scale: [1, 1.018, 1],
+                  }}
+                  transition={{
+                    duration: 2.2,
+                    repeat: Infinity,
+                    repeatType: "reverse",
+                    ease: "easeInOut"
+                  }}
+                  whileHover={{ scale: 1.03, y: -1 }}
+                  whileTap={{ scale: 0.98, y: 1 }}
+                >
+                  <Button 
+                    onClick={handleGoogleSignIn} 
+                    disabled={isSigningIn}
+                    className="w-full py-6 text-base font-extrabold rounded-xl gap-3 bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 shadow-md transition-all duration-200 h-12"
+                  >
+                    {isSigningIn ? (
+                      <div className="w-5 h-5 border-2 border-slate-800 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+                    )}
+                    Continue with Google
+                  </Button>
+                </motion.div>
+              </motion.div>
             </motion.div>
           ) : (
             <motion.div
