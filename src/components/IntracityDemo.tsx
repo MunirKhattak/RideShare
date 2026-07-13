@@ -365,7 +365,7 @@ export default function IntracityDemo({
               >
                 <motion.div 
                   animate={{ x: [0, 8, -8, 0], y: [0, -3, 3, 0] }}
-                  transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+                  transition={{ repeat: Infinity, duration: 25, ease: "easeInOut" }}
                   className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"
                 >
                   <Car className="w-24 h-24 rotate-12" />
@@ -406,7 +406,7 @@ export default function IntracityDemo({
               >
                 <motion.div 
                   animate={{ y: [0, -6, 6, 0], scale: [1, 1.04, 0.96, 1], rotate: [-12, -8, -16, -12] }}
-                  transition={{ repeat: Infinity, duration: 7, ease: "easeInOut" }}
+                  transition={{ repeat: Infinity, duration: 24, ease: "easeInOut" }}
                   className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"
                 >
                   <UserIcon className="w-24 h-24" />

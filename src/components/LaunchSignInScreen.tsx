@@ -20,6 +20,49 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+function Motorcycle({ className = "w-6 h-6", ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      {...props}
+    >
+      {/* Back wheel */}
+      <circle cx="5" cy="18" r="3" />
+      {/* Front wheel */}
+      <circle cx="19" cy="18" r="3" />
+      
+      {/* Exhaust pipe */}
+      <path d="M12 18H7.5" />
+      
+      {/* Front fork & Handlebars */}
+      <path d="M19 18l-4-11" />
+      <path d="M13.5 7H17" />
+      
+      {/* Rear swingarm */}
+      <path d="M5 18l3.5-4" />
+      
+      {/* Seat & Cowl */}
+      <path d="M4 14h5.5" />
+      {/* Tail line pointing up */}
+      <path d="M4 14l-1.5-2" />
+      
+      {/* Fuel tank */}
+      <path d="M9.5 14c1-3 3-4 5.5-2" />
+      
+      {/* Engine area structure */}
+      <path d="M8.5 14h6l.5-2H10" />
+      <path d="M11 14v2.5" />
+    </svg>
+  );
+}
+
 interface LaunchSignInScreenProps {
   user: User | null;
   profile: UserProfile | null;
@@ -256,7 +299,7 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
                       ease: "easeInOut"
                     }}
                   >
-                    <Bike className="w-5 h-5 sm:w-6 sm:h-6" />
+                    <Motorcycle className="w-5 h-5 sm:w-6 sm:h-6" />
                   </motion.div>
                 </div>
 
@@ -288,12 +331,12 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
                         <span className="text-emerald-600 font-extrabold">Passenger</span> Kharaab Transport se Pareshan?
                       </p>
                       <p className="text-slate-800 text-[13px] sm:text-sm font-bold leading-normal">
-                        <span className="text-blue-600 font-extrabold">Car</span> aur <span className="text-amber-600 font-extrabold">Bike Owners</span> Fuel k Kharchay k lye Pareshan?
+                        <span className="text-blue-600 font-extrabold">Car Owner</span> aur <span className="text-amber-600 font-extrabold">Bike Owners</span> Fuel k Kharchay k lye Pareshan?
                       </p>
                     </div>
 
                     <p className="text-slate-600 text-[11px] sm:text-xs font-semibold leading-relaxed bg-rose-50/50 py-2.5 px-3 rounded-xl border border-rose-100/30">
-                      Ab pareshaan hona chorh den, Qk <span className="text-rose-600 font-extrabold">EasyTravel</span> le aya hai en saari Pareshanion ka behtareen solution!
+                      Ab pareshaan hona chorh den, Qk <span className="font-extrabold text-red-600">Easy<span className="text-blue-600">Travel</span></span> le aya hai en saari Pareshanion ka behtareen Digital Solution!
                     </p>
 
                     <div className="pt-3 border-t border-slate-100 text-left text-[11px] sm:text-xs space-y-2 text-slate-700 max-w-[290px] sm:max-w-xs mx-auto">

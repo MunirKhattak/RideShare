@@ -42,6 +42,7 @@ import {
   Phone, 
   Navigation, 
   ArrowLeft,
+  ArrowRight,
   Clock, 
   Calendar as CalendarIcon,
   MapPin,
@@ -1684,12 +1685,12 @@ function MainPage({ setView, setProfile, user, profile, travelScope, onBack }: {
           >
             <motion.div 
               animate={{ x: [0, 8, -8, 0], y: [0, -3, 3, 0] }}
-              transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+              transition={{ repeat: Infinity, duration: 25, ease: "easeInOut" }}
               className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"
             >
               <Car className="w-24 h-24 rotate-12" />
             </motion.div>
-            <CardHeader className="p-6 relative z-10">
+            <CardHeader className="p-6 pb-16 relative z-10">
               <div className="bg-white/20 w-12 h-12 rounded-xl flex items-center justify-center mb-4 backdrop-blur-md">
                 <Car className="w-8 h-8 text-white" />
               </div>
@@ -1704,6 +1705,13 @@ function MainPage({ setView, setProfile, user, profile, travelScope, onBack }: {
                 Mujhe Passenger Chahye
               </CardDescription>
             </CardHeader>
+            <motion.div
+              animate={{ scale: [1, 1.04, 1] }}
+              transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
+              className="absolute bottom-6 right-6 w-11 h-11 rounded-full flex items-center justify-center bg-white/10 border border-white/20 text-white shadow-lg backdrop-blur-sm"
+            >
+              <ArrowRight className="w-5 h-5 stroke-[1.2]" />
+            </motion.div>
           </Card>
         </motion.div>
 
@@ -1717,12 +1725,12 @@ function MainPage({ setView, setProfile, user, profile, travelScope, onBack }: {
           >
             <motion.div 
               animate={{ y: [0, -6, 6, 0], scale: [1, 1.04, 0.96, 1], rotate: [-12, -8, -16, -12] }}
-              transition={{ repeat: Infinity, duration: 7, ease: "easeInOut" }}
+              transition={{ repeat: Infinity, duration: 24, ease: "easeInOut" }}
               className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"
             >
               <UserIcon className="w-24 h-24" />
             </motion.div>
-            <CardHeader className="p-6 relative z-10">
+            <CardHeader className="p-6 pb-16 relative z-10">
               <div className="bg-white/20 w-12 h-12 rounded-xl flex items-center justify-center mb-4 backdrop-blur-md">
                 <UserIcon className="w-8 h-8 text-white" />
               </div>
@@ -1731,6 +1739,13 @@ function MainPage({ setView, setProfile, user, profile, travelScope, onBack }: {
                 Mujhe Ride Chahye
               </CardDescription>
             </CardHeader>
+            <motion.div
+              animate={{ scale: [1, 1.04, 1] }}
+              transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
+              className="absolute bottom-6 right-6 w-11 h-11 rounded-full flex items-center justify-center bg-white/10 border border-white/20 text-white shadow-lg backdrop-blur-sm"
+            >
+              <ArrowRight className="w-5 h-5 stroke-[1.2]" />
+            </motion.div>
           </Card>
         </motion.div>
       </div>
@@ -6106,7 +6121,7 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
                 <span className="font-black text-slate-900">Car Owner</span> aur <span className="font-black text-slate-900">Bike Owner</span> Fuel k Kharchay k lye Pareshan?
               </p>
               <p className="text-slate-800 font-bold mt-2">
-                <span className="font-bold text-red-500">Easy<span className="text-blue-600">Travel</span></span> laaya hai en sari Pareshanion ka behtareen solution!
+                <span className="font-bold text-red-500">Easy<span className="text-blue-600">Travel</span></span> laaya hai en sari Pareshanion ka behtareen Digital Solution!
               </p>
             </div>
           </motion.div>
@@ -6131,21 +6146,21 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
           whileTap={{ scale: 0.98 }}
         >
           <Card 
-            className="h-full cursor-pointer border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-700 to-indigo-900 text-white group relative flex flex-col justify-between min-h-[16rem]"
+            className="cursor-pointer border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-700 to-indigo-900 text-white group relative"
             onClick={() => onSelect('intercity')}
           >
             <motion.div 
               animate={{ x: [0, 8, -8, 0], y: [0, -3, 3, 0] }}
-              transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+              transition={{ repeat: Infinity, duration: 25, ease: "easeInOut" }}
               className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity"
             >
               <Car className="w-32 h-32 rotate-12" />
             </motion.div>
-            <CardHeader className="p-8 relative z-10 flex-1">
+            <CardHeader className="p-8 pb-20 relative z-10">
               <div className="bg-white/20 w-12 h-12 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-md overflow-hidden">
                 <motion.div
                   animate={{ x: [-32, 32] }}
-                  transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
+                  transition={{ repeat: Infinity, duration: 12, ease: "linear" }}
                   className="flex items-center"
                 >
                   <Car className="w-6 h-6 text-white" />
@@ -6163,8 +6178,13 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
                 <span>Islamabad se Karak etc</span>
               </CardDescription>
             </CardHeader>
-            <div className="px-8 pb-8 pt-0 relative z-10">
-            </div>
+            <motion.div
+              animate={{ scale: [1, 1.04, 1] }}
+              transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
+              className="absolute bottom-6 right-6 w-11 h-11 rounded-full flex items-center justify-center bg-white/10 border border-white/20 text-white shadow-lg backdrop-blur-sm"
+            >
+              <ArrowRight className="w-5 h-5 stroke-[1.2]" />
+            </motion.div>
           </Card>
         </motion.div>
 
@@ -6174,22 +6194,22 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
           whileTap={{ scale: 0.98 }}
         >
           <Card 
-            className="h-full cursor-pointer border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-700 to-teal-900 text-white group relative flex flex-col justify-between min-h-[16rem]"
+            className="cursor-pointer border-none shadow-2xl rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-700 to-teal-900 text-white group relative"
             onClick={() => onSelect('intracity')}
           >
             <motion.div 
               animate={{ x: [0, -8, 8, 0], y: [0, 4, -4, 0] }}
-              transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+              transition={{ repeat: Infinity, duration: 25, ease: "easeInOut" }}
               className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity flex items-center gap-4"
             >
               <Motorcycle className="w-20 h-20 rotate-6" />
               <Car className="w-24 h-24 -rotate-12" />
             </motion.div>
-            <CardHeader className="p-8 relative z-10 flex-1">
+            <CardHeader className="p-8 pb-20 relative z-10">
               <div className="bg-white/20 w-12 h-12 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-md overflow-hidden relative">
                 <motion.div
                   animate={{ x: [-60, 60] }}
-                  transition={{ repeat: Infinity, duration: 4.5, ease: "linear" }}
+                  transition={{ repeat: Infinity, duration: 18, ease: "linear" }}
                   className="flex items-center gap-12 absolute whitespace-nowrap"
                 >
                   <Motorcycle className="w-5 h-5 text-white" />
@@ -6209,8 +6229,13 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
                 <span>Latamber se Karak etc</span>
               </CardDescription>
             </CardHeader>
-            <div className="px-8 pb-8 pt-0 relative z-10">
-            </div>
+            <motion.div
+              animate={{ scale: [1, 1.04, 1] }}
+              transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
+              className="absolute bottom-6 right-6 w-11 h-11 rounded-full flex items-center justify-center bg-white/10 border border-white/20 text-white shadow-lg backdrop-blur-sm"
+            >
+              <ArrowRight className="w-5 h-5 stroke-[1.2]" />
+            </motion.div>
           </Card>
         </motion.div>
       </div>
