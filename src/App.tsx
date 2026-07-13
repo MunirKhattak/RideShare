@@ -144,8 +144,22 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   
   const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint' | 'privacy_policy'>('main');
-  const [travelScope, setTravelScope] = useState<'intercity' | 'intracity' | null>(null);
+  const [travelScope, setTravelScopeState] = useState<'intercity' | 'intracity' | null>(null);
+  const travelScopeRef = useRef<'intercity' | 'intracity' | null>(null);
   const viewRef = useRef(view);
+
+  const setTravelScope = (scope: 'intercity' | 'intracity' | null, pushToHistory = true) => {
+    const oldScope = travelScopeRef.current;
+    travelScopeRef.current = scope;
+    setTravelScopeState(scope);
+
+    if (pushToHistory && oldScope !== scope) {
+      if (viewRef.current === 'main') {
+        window.history.pushState({ view: 'main', travelScope: scope }, '', '');
+      }
+    }
+  };
+
   useEffect(() => {
     viewRef.current = view;
   }, [view]);
@@ -303,11 +317,11 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    // Use setTimeout to ensure scrolling happens after the DOM has updated
-    setTimeout(() => {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    }, 10);
-  }, [view]);
+    // Set scroll restoration to manual so the browser does not force a scroll jump on popstate/back-button actions
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
+  }, []);
 
   useEffect(() => {
     if (!user || !profile || user.uid.startsWith('mock-')) return;
@@ -447,32 +461,37 @@ export default function App() {
 
   const setView = (newView: any, item?: any) => {
     if (item) setSelectedItem(item);
+    
+    let targetTravelScope = travelScopeRef.current;
     if (newView === 'main') {
-      setTravelScope(null);
+      targetTravelScope = null;
     }
-    if (view !== newView) {
-      window.history.pushState({ view: newView }, '', '');
+    
+    if (view !== newView || travelScopeRef.current !== targetTravelScope) {
+      window.history.pushState({ view: newView, travelScope: targetTravelScope }, '', '');
       setViewState(newView);
+      setTravelScope(targetTravelScope, false);
     }
   };
 
   useEffect(() => {
     // Initialize first state if not present
     if (!window.history.state) {
-      window.history.replaceState({ view: 'main' }, '', '');
+      window.history.replaceState({ view: 'main', travelScope: null }, '', '');
     }
 
     const handlePopState = (event: PopStateEvent) => {
-      if (event.state && event.state.view) {
-        setViewState(event.state.view);
-        if (event.state.view === 'main') {
-          setTravelScope(null);
-        }
+      if (event.state) {
+        const stateView = event.state.view || 'main';
+        const stateScope = event.state.travelScope !== undefined ? event.state.travelScope : null;
+        
+        setViewState(stateView);
+        setTravelScope(stateScope, false);
       } else {
         // If no state, we are at the beginning. Let the browser handle it (minimize/close app)
         // Or default to main
         setViewState('main');
-        setTravelScope(null);
+        setTravelScope(null, false);
       }
     };
 
@@ -481,8 +500,31 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Page load alignment: scroll back to the very top header whenever view or category switches
-    window.scrollTo(0, 0);
+    const handleScroll = () => {
+      window.scrollTo(0, 0);
+      if (document.documentElement) {
+        document.documentElement.scrollTop = 0;
+      }
+      if (document.body) {
+        document.body.scrollTop = 0;
+      }
+    };
+
+    // Scroll immediately
+    handleScroll();
+
+    // Scroll after multiple staggered intervals to account for rendering updates and transition animations
+    const t1 = setTimeout(handleScroll, 10);
+    const t2 = setTimeout(handleScroll, 80);
+    const t3 = setTimeout(handleScroll, 180);
+    const t4 = setTimeout(handleScroll, 300);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
   }, [view, travelScope]);
 
   useEffect(() => {
@@ -1110,7 +1152,7 @@ export default function App() {
   const renderView = () => {
     switch (view) {
       case 'main':
-        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} travelScope={travelScope} onBack={() => setTravelScope(null)} />;
+        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} travelScope={travelScope} onBack={() => window.history.back()} />;
       case 'register': {
         let defaultRegRole: 'driver' | 'passenger' = (profile?.role as 'driver' | 'passenger') || 'passenger';
         try {
@@ -1168,7 +1210,7 @@ export default function App() {
       case 'privacy_policy':
         return <PrivacyPolicy setView={setView} />;
       default:
-        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} travelScope={travelScope} onBack={() => setTravelScope(null)} />;
+        return <MainPage setView={setView} setProfile={setProfile} user={user} profile={profile} travelScope={travelScope} onBack={() => window.history.back()} />;
     }
   };
 
@@ -1187,12 +1229,7 @@ export default function App() {
         </motion.div>
       )}
 
-      <Header user={user} profile={profile} setView={(v, item) => {
-        if (v === 'main') {
-          setTravelScope(null);
-        }
-        setView(v, item);
-      }} onSignInClick={() => setShowSignInModal(true)} onInstall={deferredPrompt ? handleInstall : undefined} />
+      <Header user={user} profile={profile} setView={setView} onSignInClick={() => setShowSignInModal(true)} onInstall={deferredPrompt ? handleInstall : undefined} />
       
 
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-8">
