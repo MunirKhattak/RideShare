@@ -142,39 +142,6 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   
-  // Support for Guest / Offline Mock User Session
-  useEffect(() => {
-    const loadMockSession = () => {
-      const savedMockUser = localStorage.getItem('easytravel_mock_user');
-      const savedMockProfile = localStorage.getItem('easytravel_mock_profile');
-      
-      if (savedMockUser && savedMockProfile) {
-        setUser(JSON.parse(savedMockUser) as any);
-        setProfile(JSON.parse(savedMockProfile) as any);
-      } else if (!savedMockUser && !savedMockProfile) {
-        // If clear occurred, reset state if we have a mock user
-        setUser(currentUser => {
-          if (currentUser && currentUser.uid.startsWith('mock-')) {
-            return null;
-          }
-          return currentUser;
-        });
-        setProfile(currentProfile => {
-          if (currentProfile && currentProfile.uid.startsWith('mock-')) {
-            return null;
-          }
-          return currentProfile;
-        });
-      }
-    };
-
-    loadMockSession();
-    window.addEventListener('easytravel_mock_auth_changed', loadMockSession);
-    return () => {
-      window.removeEventListener('easytravel_mock_auth_changed', loadMockSession);
-    };
-  }, []);
-
   const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint' | 'privacy_policy'>('main');
   const [travelScope, setTravelScope] = useState<'intercity' | 'intracity' | null>(null);
   const viewRef = useRef(view);
@@ -342,7 +309,7 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
-    if (!user || !profile) return;
+    if (!user || !profile || user.uid.startsWith('mock-')) return;
     
     // Check for rides/requests that need status report
     const checkPendingReports = async () => {
@@ -393,7 +360,7 @@ export default function App() {
 
   // Reward System Background Listener
   useEffect(() => {
-    if (!user || !profile) return;
+    if (!user || !profile || user.uid.startsWith('mock-')) return;
 
     const q = query(
       collection(db, 'rides'),
@@ -461,7 +428,7 @@ export default function App() {
 
   // Global listener for delivered messages
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.uid.startsWith('mock-')) return;
     const q = query(
       collection(db, 'messages'),
       where('receiverId', '==', user.uid),
@@ -536,7 +503,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.uid.startsWith('mock-')) return;
     
     // Listen for pending warnings for this user
     const q = query(collection(db, 'warnings'), where('userId', '==', user.uid), where('status', '==', 'pending'));
@@ -557,7 +524,7 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.uid.startsWith('mock-')) return;
     
     // Listen for resolved complaints with admin replies that haven't been acknowledged
     const q = query(
@@ -639,20 +606,8 @@ export default function App() {
             setLoading(false);
           });
         } else {
-          // Check if there is a local mock user first to avoid overwriting guest session
-          const savedMockUser = localStorage.getItem('easytravel_mock_user');
-          const savedMockProfile = localStorage.getItem('easytravel_mock_profile');
-          if (savedMockUser) {
-            setUser(JSON.parse(savedMockUser) as any);
-            if (savedMockProfile) {
-              setProfile(JSON.parse(savedMockProfile) as any);
-            } else {
-              setProfile(null);
-            }
-          } else {
-            setUser(null);
-            setProfile(null);
-          }
+          setUser(null);
+          setProfile(null);
           setLoading(false);
         }
       } catch (error) {
@@ -698,7 +653,7 @@ export default function App() {
 
   // Real-time Listeners
   useEffect(() => {
-    if (!user || !profile) return;
+    if (!user || !profile || user.uid.startsWith('mock-')) return;
     const qRides = query(
       collection(db, 'rides'), 
       where('status', '==', 'available'), 
@@ -726,7 +681,7 @@ export default function App() {
 
   // Notification Listener
   useEffect(() => {
-    if (!user || !profile) return;
+    if (!user || !profile || user.uid.startsWith('mock-')) return;
 
     // Request permission
     if ('Notification' in window && Notification.permission === 'default') {
@@ -4988,6 +4943,7 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
   const [paymentTab, setPaymentTab] = useState<'pending' | 'approved'>('pending');
 
   useEffect(() => {
+    if (!user || user.uid.startsWith('mock-')) return;
     // Real-time stats and lists
     const unsubPayments = onSnapshot(query(collection(db, 'paymentRequests'), orderBy('timestamp', 'desc')), (snap) => {
       setPaymentRequests(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as WalletRechargeRequest)));
@@ -6132,7 +6088,7 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
               Ab Apka Safar 'Hamari Zimedaari'
             </p>
             <p className="text-[11px] md:text-sm font-bold text-slate-500 mt-2 whitespace-nowrap overflow-hidden text-ellipsis">
-              Fauri Raabta - Araam Deh Safar - Kam Kharcha
+              Fauri Raabta - Araam Deh Safar - Bachat aur Munaafa
             </p>
           </motion.div>
 
@@ -6140,11 +6096,19 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-slate-50 border border-slate-200 py-3 px-6 rounded-xl text-center"
+            className="bg-slate-50 border border-slate-200 py-4 px-6 rounded-2xl text-center shadow-sm"
           >
-            <p className="text-sm md:text-base font-semibold text-slate-600 leading-relaxed">
-              <span className="font-black text-slate-900">Car Owner</span> ya <span className="font-black text-slate-900">Bike Owner</span> k pas Seats Khaali hain ? - Aur - <span className="font-black text-slate-900">Passenger</span> Kharab Transport System se Pareshaan hai ?
-            </p>
+            <div className="text-sm md:text-base font-semibold text-slate-600 leading-relaxed">
+              <p>
+                <span className="font-black text-slate-900">Passenger</span> Kharaab Transport se Pareshan?
+              </p>
+              <p className="mt-1">
+                <span className="font-black text-slate-900">Car Owner</span> aur <span className="font-black text-slate-900">Bike Owner</span> Fuel k Kharchay k lye Pareshan?
+              </p>
+              <p className="text-slate-800 font-bold mt-2">
+                <span className="font-bold text-red-500">Easy<span className="text-blue-600">Travel</span></span> laaya hai en sari Pareshanion ka behtareen solution!
+              </p>
+            </div>
           </motion.div>
 
           <motion.div 
@@ -6154,7 +6118,7 @@ function TravelScopeSelection({ onSelect }: { onSelect: (scope: 'intercity' | 'i
             className="bg-emerald-50/40 border border-emerald-100/30 py-4 px-6 rounded-2xl text-center"
           >
             <p className="text-sm md:text-base text-slate-600 font-medium leading-relaxed">
-              Abhi <span className="font-bold text-emerald-700">EasyTravel</span> pe Search Karen ya Post Lagayen - <span className="font-black text-emerald-800">Car Owner</span> aur <span className="font-black text-emerald-800">Bike Owner</span> apna Fuel ka Kharcha Bachaen, Munaafa Kamaen - <span className="font-black text-emerald-800">Passenger</span> apna Safar Araam Deh Banaaen
+              Abhi <span className="font-bold text-red-500">Easy<span className="text-blue-600">Travel</span></span> pe Search Karen ya Post Lagayen - <span className="font-black text-emerald-800">Passengers</span> apna Safar Sasta aur Aramdeh Bnaaen - <span className="font-black text-emerald-800">Car Owners</span> aur <span className="font-black text-emerald-800">Bike Owners</span> apne Fuel ka Kharcha Bachaen aur Behtareen Munaafa Kamaen
             </p>
           </motion.div>
         </div>

@@ -75,46 +75,16 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
       }
     } catch (error: any) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      console.warn("Google Sign-In failed, fallback to Guest mode activated:", error);
+      const errCode = error?.code;
+      console.warn("Google Sign-In error details:", error);
       
-      // Since Google Login is blocked/failed in the iframe, let's auto-login with Demo Guest mode instantly
-      toast.warning(
-        "Google Login is blocked in iframe/browser! Securing with Demo Guest mode...",
-        { duration: 5000 }
-      );
-      
-      setTimeout(() => {
-        handleOfflineGuestSignIn();
-      }, 1000);
+      if (errCode === 'auth/popup-closed-by-user' || errCode === 'auth/cancelled-popup-request' || errMsg.includes('closed-by-user') || errMsg.includes('cancelled')) {
+        toast.error("Google Sign-In cancel ho gaya!");
+      } else {
+        toast.error(`Google Sign-In fail ho gaya: ${errMsg || "Browser network error ya permission block ho sakti hai"}`);
+      }
     } finally {
       setIsSigningIn(false);
-    }
-  };
-
-  const handleOfflineGuestSignIn = () => {
-    try {
-      const mockUid = `mock-${Math.floor(100000 + Math.random() * 900000)}`;
-      const mockUser = {
-        uid: mockUid,
-        displayName: 'Demo Guest User',
-        email: 'demo@easytravel.com',
-        photoURL: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150'
-      };
-      
-      // Save to localStorage
-      localStorage.setItem('easytravel_mock_user', JSON.stringify(mockUser));
-      
-      // Dispatch state update directly
-      if (setUser) {
-        setUser(mockUser as any);
-      }
-      
-      // Dispatch event to notify App component about auth change
-      window.dispatchEvent(new Event('easytravel_mock_auth_changed'));
-      
-      toast.success("Demo Guest mode kamyab! Apne profile ki maloomat darj karein.");
-    } catch (err) {
-      toast.error("Offline login fail ho gaya.");
     }
   };
 
