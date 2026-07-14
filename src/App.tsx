@@ -3621,7 +3621,7 @@ function LoadingSpinner() {
         className="flex flex-col items-center gap-6"
       >
         <div className="w-24 h-24 flex items-center justify-center">
-          <img src="/icon.svg" className="w-24 h-24 object-contain drop-shadow-xl animate-pulse" alt="EasyTravel Logo" referrerPolicy="no-referrer" />
+          <img src="/icon.svg" className="w-24 h-24 object-contain drop-shadow-xl" alt="EasyTravel Logo" referrerPolicy="no-referrer" />
         </div>
         
         <div className="flex flex-col items-center">
