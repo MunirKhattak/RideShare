@@ -331,7 +331,7 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
                         <span className="text-emerald-600 font-extrabold">Passenger</span> Kharaab Transport se Pareshan?
                       </p>
                       <p className="text-slate-800 text-[13px] sm:text-sm font-bold leading-normal">
-                        <span className="text-blue-600 font-extrabold">Car Owner</span> aur <span className="text-amber-600 font-extrabold">Bike Owners</span> Fuel k Kharchay k lye Pareshan?
+                        <span className="text-blue-600 font-extrabold">Car Owner</span> aur <span className="text-amber-600 font-extrabold">Bike Owner</span> Fuel k Kharchay k lye Pareshan?
                       </p>
                     </div>
 
