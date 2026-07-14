@@ -1337,7 +1337,7 @@ function Header({ user, profile, setView, onSignInClick, onInstall }: { user: Us
             </h1>
             
             {/* Car Animation directly below App Name */}
-            <div className="h-5 w-28 relative overflow-hidden mt-0.5">
+            <div className="h-5 w-40 relative overflow-hidden mt-0.5">
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <motion.div
                   animate={{ 
@@ -1354,7 +1354,7 @@ function Header({ user, profile, setView, onSignInClick, onInstall }: { user: Us
                     repeat: Infinity, 
                     ease: "easeInOut" 
                   }}
-                  className="text-blue-500 font-bold text-[8px] tracking-tighter whitespace-nowrap"
+                  className="text-blue-500 font-bold text-[10.5px] tracking-tight whitespace-nowrap"
                 >
                   Let's Travel Together
                 </motion.div>
@@ -1362,7 +1362,7 @@ function Header({ user, profile, setView, onSignInClick, onInstall }: { user: Us
 
               <motion.div
                 animate={{ 
-                  left: ["0%", "85%", "85%", "0%", "0%"],
+                  left: ["5%", "85%", "85%", "5%", "5%"],
                   rotateY: [0, 0, 180, 180, 0]
                 }}
                 transition={{ 
