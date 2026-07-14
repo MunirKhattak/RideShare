@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   MapPin, 
@@ -18,7 +19,10 @@ import {
   Bike,
   Car as CarIcon,
   ExternalLink,
-  Edit
+  Edit,
+  ChevronUp,
+  ChevronDown,
+  GripVertical
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -374,17 +378,6 @@ export default function LiveActivePassengerMap({
 
   return (
     <div className="space-y-4">
-      {/* Top navigation Back arrow only */}
-      <div className="flex items-center justify-between pb-1">
-        <button
-          onClick={onClose}
-          className="flex items-center justify-center w-11 h-11 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 transition-all font-bold shadow-sm cursor-pointer border border-slate-200/50"
-          title="Back"
-        >
-          <ArrowLeft className="w-5 h-5 text-blue-600" />
-        </button>
-      </div>
-
       {/* Premium Sub-Header Card */}
       <Card className="border-none bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 text-white shadow-xl rounded-2xl p-5 overflow-hidden relative">
          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl" />
@@ -393,9 +386,18 @@ export default function LiveActivePassengerMap({
          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
            {/* Text removed as requested - replaced with real route info */}
            <div className="space-y-1.5 max-w-xl">
-             <span className="inline-flex items-center gap-1 bg-white/10 backdrop-blur-md text-[10px] tracking-wider uppercase px-2.5 py-1 rounded-full text-blue-200 border border-white/10 font-bold">
-               <Sparkles className="w-3 h-3 text-amber-300 animate-spin" style={{ animationDuration: '3s' }} /> Active Live Ride Routing
-             </span>
+             <div className="relative flex items-center justify-center min-h-[36px] mb-2 w-full">
+               <button
+                 onClick={onClose}
+                 className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white transition-all font-bold shadow-md cursor-pointer border border-white/10 shrink-0"
+                 title="Wapas Jayein"
+               >
+                 <ArrowLeft className="w-4 h-4 text-white" />
+               </button>
+               <span className="inline-flex items-center gap-1.5 bg-white/10 backdrop-blur-md text-[10.5px] tracking-wider uppercase px-3 py-1.5 rounded-full text-blue-200 border border-white/15 font-extrabold mx-auto">
+                 <Sparkles className="w-3 h-3 text-amber-300 animate-spin" style={{ animationDuration: '3s' }} /> Active Live Ride Routing
+               </span>
+             </div>
              {autoActive ? (
                <div className="space-y-1">
                  <div className="text-white">

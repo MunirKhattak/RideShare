@@ -2581,7 +2581,7 @@ function Dashboard({
 
   if (showLiveMap) {
     return (
-      <div className="py-4">
+      <div className="pt-0.5 pb-4">
         <LiveActivePassengerMap 
           userRole={userRole === 'driver' ? 'driver' : 'passenger'}
           driverProfile={profile} 
