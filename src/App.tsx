@@ -601,7 +601,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setSplashLoading(false);
-    }, 5000);
+    }, 7000);
     return () => clearTimeout(timer);
   }, []);
 
