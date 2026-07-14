@@ -40,19 +40,29 @@
 
   <!-- Logo Group containing ET, smile arrow, and pin with a unified 3D shadow -->
   <g filter="url(#elementShadow)">
-    <!-- Shift the entire group of professional elements 18px to the right and 2px down to achieve perfect visual center and balance -->
-    <g transform="translate(18, 2)">
+    <!-- Shift the entire group of professional elements 18px to the right and 24px down to achieve perfect visual center and optical balance -->
+    <g transform="translate(18, 24)">
       
       <!-- Letter 'E' - Clean, modern sans-serif vector strokes with proportional size and thickness -->
-      <path d="M 205,150 L 145,150 L 145,270 L 205,270 M 145,210 L 190,210" 
+      <path d="M 205,150 L 145,150 L 145,270 L 205,270" 
             fill="none" 
             stroke="#ffffff" 
             stroke-width="28" 
             stroke-linecap="round" 
             stroke-linejoin="round" />
+      <path d="M 145,210 L 192,210" 
+            fill="none" 
+            stroke="#ffffff" 
+            stroke-width="28" 
+            stroke-linecap="round" />
 
       <!-- Letter 'T' - Perfectly matched and aligned custom typography -->
-      <path d="M 245,150 L 315,150 M 280,150 L 280,270" 
+      <path d="M 245,150 L 315,150" 
+            fill="none" 
+            stroke="#ffffff" 
+            stroke-width="28" 
+            stroke-linecap="round" />
+      <path d="M 280,150 L 280,270" 
             fill="none" 
             stroke="#ffffff" 
             stroke-width="28" 

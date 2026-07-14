@@ -1800,7 +1800,6 @@ function PrivacyPolicy({ setView }: { setView: (v: any) => void }) {
         </Button>
         <div className="flex flex-col flex-1">
           <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Privacy Policy</h2>
-          <p className="text-slate-500 text-xs mt-0.5">Last Updated: July 09, 2026 • Version 3.0.0 (Play Store & App Store Compliant)</p>
         </div>
       </div>
 
