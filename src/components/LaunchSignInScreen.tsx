@@ -83,6 +83,55 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
     photoURL: ''
   });
 
+  // Secret bypass for App Reviewers
+  const [secretClicks, setSecretClicks] = useState(0);
+  const [showSecretInput, setShowSecretInput] = useState(false);
+  const [secretCode, setSecretCode] = useState('');
+
+  const handleLogoClick = () => {
+    const nextClicks = secretClicks + 1;
+    setSecretClicks(nextClicks);
+    if (nextClicks >= 7) {
+      setShowSecretInput(true);
+      setSecretClicks(0);
+      toast.info("Secret Reviewer Access unlocked!");
+    }
+  };
+
+  const handleSecretSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (secretCode === 'EASY2026' || secretCode === '7896') {
+      const reviewerUser = {
+        uid: 'mock-reviewer-12345',
+        displayName: 'Google Reviewer',
+        email: 'play-reviewer@easytravel.com',
+        photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+      } as any;
+
+      const reviewerProfile: UserProfile = {
+        uid: 'mock-reviewer-12345',
+        customId: 'ET-REVIEWER',
+        displayName: 'Google Reviewer',
+        email: 'play-reviewer@easytravel.com',
+        photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+        phoneNumber: '03001234567',
+        whatsappNumber: '03001234567',
+        role: 'passenger',
+        easyCoins: 1000,
+        createdAt: new Date()
+      };
+
+      if (setUser) {
+        setUser(reviewerUser);
+      }
+      setProfile(reviewerProfile);
+      setView('main');
+      toast.success("Reviewer Test Account se login ho gaye!");
+    } else {
+      toast.error("Ghalat secret code!");
+    }
+  };
+
   // Track if we need to show profile completion when user updates
   useEffect(() => {
     if (user && !profile) {
@@ -210,7 +259,10 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
           className="flex flex-col items-center gap-4"
         >
           {/* Logo element identical to the splash screen */}
-          <div className="w-20 h-20 flex items-center justify-center">
+          <div 
+            onClick={handleLogoClick}
+            className="w-20 h-20 flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
+          >
             <img src="/icon.svg" className="w-20 h-20 object-contain drop-shadow-lg" alt="EasyTravel Logo" referrerPolicy="no-referrer" />
           </div>
 
@@ -402,6 +454,42 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
                   </Button>
                 </motion.div>
               </motion.div>
+
+              {/* Secret Reviewer Passcode Entry */}
+              <AnimatePresence>
+                {showSecretInput && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: 'auto' }}
+                    exit={{ opacity: 0, y: 10, height: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="pt-2"
+                  >
+                    <Card className="border border-slate-200 bg-white/95 backdrop-blur-sm shadow-xl rounded-2xl p-4 overflow-hidden">
+                      <form onSubmit={handleSecretSubmit} className="space-y-3">
+                        <div className="space-y-1">
+                          <Label className="text-slate-700 text-xs font-bold">Reviewer Passcode</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              type="text"
+                              placeholder="Passcode likhein (e.g. EASY2026)"
+                              value={secretCode}
+                              onChange={(e) => setSecretCode(e.target.value)}
+                              className="bg-white border-slate-200 text-slate-950 rounded-xl h-11 text-center tracking-wider font-extrabold"
+                            />
+                            <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold h-11 px-5 rounded-xl">
+                              Login
+                            </Button>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-bold text-center pt-1">
+                            Google Play / App Store reviewers bypass verification screen.
+                          </p>
+                        </div>
+                      </form>
+                    </Card>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           ) : (
             <motion.div
