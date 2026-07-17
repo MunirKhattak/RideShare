@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -87,14 +87,28 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
   const [secretClicks, setSecretClicks] = useState(0);
   const [showSecretInput, setShowSecretInput] = useState(false);
   const [secretCode, setSecretCode] = useState('');
+  const lastTapRef = useRef<number>(0);
 
-  const handleLogoClick = () => {
+  const handleLogoTap = (e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    const now = Date.now();
+    // Prevent double execution within 300ms (touch & click emulation)
+    if (now - lastTapRef.current < 300) {
+      return;
+    }
+    lastTapRef.current = now;
+
     const nextClicks = secretClicks + 1;
     setSecretClicks(nextClicks);
+
     if (nextClicks >= 7) {
       setShowSecretInput(true);
       setSecretClicks(0);
-      toast.info("Secret Reviewer Access unlocked!");
+      toast.success("🔑 Secret Reviewer Access unlocked! Neeche passcode enter krein.");
     }
   };
 
@@ -260,10 +274,11 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
         >
           {/* Logo element identical to the splash screen */}
           <div 
-            onClick={handleLogoClick}
-            className="w-20 h-20 flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
+            onClick={handleLogoTap}
+            onTouchStart={handleLogoTap}
+            className="w-20 h-20 flex items-center justify-center cursor-pointer active:scale-95 transition-transform select-none"
           >
-            <img src="/icon.svg" className="w-20 h-20 object-contain drop-shadow-lg" alt="EasyTravel Logo" referrerPolicy="no-referrer" />
+            <img src="/icon.svg" className="w-20 h-20 object-contain drop-shadow-lg pointer-events-none" alt="EasyTravel Logo" referrerPolicy="no-referrer" />
           </div>
 
           <div className="flex flex-col items-center">
