@@ -91,8 +91,11 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
 
   const handleLogoTap = (e?: React.MouseEvent | React.TouchEvent) => {
     if (e) {
-      e.preventDefault();
       e.stopPropagation();
+      // Only call preventDefault on standard click events to avoid passive-listener exceptions on mobile touch events
+      if (e.type === 'click') {
+        e.preventDefault();
+      }
     }
     
     const now = Date.now();
@@ -275,7 +278,6 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
           {/* Logo element identical to the splash screen */}
           <div 
             onClick={handleLogoTap}
-            onTouchStart={handleLogoTap}
             className="w-20 h-20 flex items-center justify-center cursor-pointer active:scale-95 transition-transform select-none"
           >
             <img src="/icon.svg" className="w-20 h-20 object-contain drop-shadow-lg pointer-events-none" alt="EasyTravel Logo" referrerPolicy="no-referrer" />
