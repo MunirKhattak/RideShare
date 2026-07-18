@@ -5323,43 +5323,7 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
         </TabsContent>
 
         <TabsContent value="overview" className="mt-4 space-y-4">
-          <Card className="border-red-100 bg-red-50/30">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-bold text-red-700 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" />
-                System Cleanup
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-red-600">Karachi se mutaliq tamam posts aur bookings delete karein.</p>
-                <Button 
-                  variant="destructive" 
-                  size="sm" 
-                  onClick={handleCleanupKarachi}
-                  disabled={isCleaning}
-                  className="h-8 text-xs font-bold"
-                >
-                  {isCleaning ? 'Cleaning...' : 'Cleanup Karachi'}
-                </Button>
-              </div>
-              <div className="flex items-center justify-between pt-4 border-t border-red-100">
-                <div>
-                  <p className="text-xs text-red-800 font-black">FULL SYSTEM RESET</p>
-                  <p className="text-[10px] text-red-500">Tamam posts, bookings aur complaints uraaen.</p>
-                </div>
-                <Button 
-                  variant="destructive" 
-                  size="sm" 
-                  onClick={handleFullReset}
-                  disabled={isCleaning}
-                  className="h-10 px-4 text-xs font-black shadow-lg shadow-red-100"
-                >
-                  {isCleaning ? 'Resetting...' : 'APP FRESH KAREIN'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+
 
           <Card>
             <CardHeader>
