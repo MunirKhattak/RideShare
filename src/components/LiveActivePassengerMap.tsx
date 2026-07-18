@@ -478,8 +478,11 @@ export default function LiveActivePassengerMap({
       {autoActive ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           
-          {/* Map canvas container */}
-          <div className="lg:col-span-2 relative group overflow-hidden bg-slate-900 h-[500px] rounded-3xl border border-slate-200 shadow-inner flex flex-col justify-end">
+          {/* Map canvas container wrapper with professional side scroller strip */}
+          <div className="lg:col-span-2 flex gap-1.5 sm:gap-3 items-stretch">
+            
+            {/* Map canvas container */}
+            <div className="flex-1 relative group overflow-hidden bg-slate-900 h-[500px] rounded-3xl border border-slate-200 shadow-inner flex flex-col justify-end">
             
             {/* Map Frame anchor */}
             <div className="absolute inset-0 z-0 bg-slate-100">
@@ -716,6 +719,48 @@ export default function LiveActivePassengerMap({
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+
+          {/* Professional Page Scroll Strip */}
+          <div 
+            className="w-5 sm:w-6 bg-gradient-to-b from-slate-50 via-slate-100 to-slate-50 border border-slate-200 rounded-full flex flex-col items-center justify-between py-2 select-none cursor-ns-resize shadow shrink-0 transition-all active:scale-[0.99] touch-pan-y"
+            style={{ height: '500px' }}
+            title="Page Scroll Strip: Click buttons or drag here to scroll page up/down"
+          >
+            {/* Scroll Up Button */}
+            <button
+              onClick={() => {
+                window.scrollBy({ top: -350, behavior: 'smooth' });
+                toast.success("Scrolling Up ✓", { duration: 800 });
+              }}
+              className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white hover:bg-blue-50 text-slate-600 shadow-sm border border-slate-200 flex items-center justify-center transition-all active:scale-90"
+              title="Page scroll up"
+            >
+              <ChevronUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-600" />
+            </button>
+
+            {/* Decorative minimalist track and grip */}
+            <div className="flex-1 flex flex-col items-center justify-center my-1 w-full relative">
+              <div className="w-[1.5px] h-full bg-slate-200 rounded-full relative flex items-center justify-center">
+                <div className="absolute w-2.5 h-6 sm:w-3 sm:h-7 bg-white border border-slate-200 rounded-full flex items-center justify-center shadow-sm hover:border-slate-300">
+                  <div className="w-0.5 h-2 bg-slate-300 rounded" />
+                </div>
+              </div>
+            </div>
+
+            {/* Scroll Down Button */}
+            <button
+              onClick={() => {
+                window.scrollBy({ top: 350, behavior: 'smooth' });
+                toast.success("Scrolling Down ✓", { duration: 800 });
+              }}
+              className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white hover:bg-blue-50 text-slate-600 shadow-sm border border-slate-200 flex items-center justify-center transition-all active:scale-90"
+              title="Page scroll down"
+            >
+              <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-600" />
+            </button>
+          </div>
+
           </div>
 
           {/* Right Sidebar - General Active Users surroundings list */}
