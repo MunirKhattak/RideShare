@@ -155,6 +155,7 @@ export interface Booking {
 export interface WalletRechargeRequest {
   id: string;
   userId: string;
+  userCustomId?: string;
   userDisplayName: string;
   userEmail: string;
   amount: number;

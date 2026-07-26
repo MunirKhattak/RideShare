@@ -5032,6 +5032,7 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
   const [warnings, setWarnings] = useState<Warning[]>([]);
   const [drivers, setDrivers] = useState<UserProfile[]>([]);
   const [passengers, setPassengers] = useState<UserProfile[]>([]);
+  const [allUsersMap, setAllUsersMap] = useState<Record<string, UserProfile>>({});
   const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedUserForWarning, setSelectedUserForWarning] = useState<UserProfile | null>(null);
@@ -5059,6 +5060,15 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
     const unsubPassengers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'passenger')), (snap) => {
       setStats(prev => ({ ...prev, passengers: snap.size }));
       setPassengers(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
+    });
+    const unsubAllUsers = onSnapshot(collection(db, 'users'), (snap) => {
+      const map: Record<string, UserProfile> = {};
+      snap.docs.forEach(d => {
+        map[d.id] = { uid: d.id, ...d.data() } as UserProfile;
+      });
+      setAllUsersMap(map);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'users');
     });
@@ -5103,6 +5113,7 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
       unsubPayments();
       unsubDrivers();
       unsubPassengers();
+      unsubAllUsers();
       unsubRides();
       unsubRequests();
       unsubComplaintsCount();
@@ -5294,21 +5305,30 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
                   {paymentRequests.filter(p => p.status === paymentTab).length === 0 ? (
                     <p className="text-sm text-slate-500 text-center py-4">Koi {paymentTab} request nahi hai.</p>
                   ) : (
-                    paymentRequests.filter(p => p.status === paymentTab).map((req) => (
-                      <div key={req.id} className="p-3 border rounded-lg bg-white shadow-sm flex flex-col gap-2">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-bold text-sm text-slate-800">{req.userDisplayName}</p>
-                            <p className="text-xs text-slate-500">{req.method.toUpperCase()} • <span className="font-semibold text-slate-700">Sender: {req.txnId || 'N/A'}</span></p>
-                            <p className="text-[10px] text-slate-400">{req.timestamp ? new Date(req.timestamp.toDate()).toLocaleString() : 'Just now'}</p>
+                    paymentRequests.filter(p => p.status === paymentTab).map((req) => {
+                      const matchedUser = allUsersMap[req.userId] || drivers.find(d => d.uid === req.userId) || passengers.find(p => p.uid === req.userId);
+                      const displayCustomId = req.userCustomId || matchedUser?.customId || (req.userId && !req.userId.startsWith('mock-') ? req.userId : '');
+
+                      return (
+                        <div key={req.id} className="p-3 border rounded-lg bg-white shadow-sm flex flex-col gap-2">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-bold text-sm text-slate-800">{req.userDisplayName}</p>
+                              {displayCustomId && (
+                                <p className="text-xs text-blue-600 font-mono font-semibold">
+                                  User ID: {displayCustomId}
+                                </p>
+                              )}
+                              <p className="text-xs text-slate-500 mt-0.5">{req.method.toUpperCase()} • <span className="font-semibold text-slate-700">Sender: {req.txnId || 'N/A'}</span></p>
+                              <p className="text-[10px] text-slate-400">{req.timestamp ? new Date(req.timestamp.toDate()).toLocaleString() : 'Just now'}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-black text-emerald-600 text-base">Rs. {req.amount}</p>
+                              <Badge variant="outline" className={req.status === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}>
+                                {req.status}
+                              </Badge>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="font-black text-emerald-600 text-base">Rs. {req.amount}</p>
-                            <Badge variant="outline" className={req.status === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}>
-                              {req.status}
-                            </Badge>
-                          </div>
-                        </div>
                         {req.status === 'pending' && (
                           <div className="flex gap-2 justify-end mt-2">
                             <Button 
@@ -5371,8 +5391,9 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
                           </div>
                         )}
                       </div>
-                    ))
-                  )}
+                    );
+                  })
+                )}
                 </div>
               </ScrollArea>
             </CardContent>

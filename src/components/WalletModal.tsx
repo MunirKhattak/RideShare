@@ -141,6 +141,7 @@ export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan",
       // Submit payment request
       await addDoc(collection(db, 'paymentRequests'), {
         userId: profile.uid,
+        userCustomId: profile.customId || '',
         userDisplayName: profile.displayName || 'Unknown User',
         userEmail: profile.email || '',
         amount: amountNum,
