@@ -5208,7 +5208,7 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
-        <StatCard title="Today Visits" value={stats.visits} icon={<Eye className="w-5 h-5" />} color="bg-indigo-500" />
+        <StatCard title="Today Visits" value={stats.visits} icon={<Eye className="w-5 h-5" />} color="bg-indigo-500" onClick={() => setActiveTab('overview')} />
         <StatCard title="Total Rides" value={stats.rides} icon={<Navigation className="w-5 h-5" />} color="bg-emerald-500" onClick={() => setActiveTab('rides')} />
         <StatCard title="Car Owners" value={carOwners.length} icon={<Car className="w-5 h-5" />} color="bg-blue-500" onClick={() => setActiveTab('drivers')} />
         <StatCard title="Bike Owners" value={bikeOwners.length} icon={<Bike className="w-5 h-5" />} color="bg-amber-500" onClick={() => setActiveTab('bike_owners')} />
@@ -5218,17 +5218,19 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="flex w-full overflow-x-auto whitespace-nowrap mb-4 gap-2 border-b border-slate-100 pb-2">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="drivers">Car Owners ({carOwners.length})</TabsTrigger>
-          <TabsTrigger value="bike_owners">Bike Owners ({bikeOwners.length})</TabsTrigger>
-          <TabsTrigger value="passengers">Passengers ({stats.passengers})</TabsTrigger>
-          <TabsTrigger value="rides">Rides</TabsTrigger>
-          <TabsTrigger value="bookings">Bookings</TabsTrigger>
-          <TabsTrigger value="complaints">Complaints</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
-          <TabsTrigger value="warnings">Warnings</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 mb-4">
+          <TabsList className="inline-flex w-max justify-start items-center gap-1.5 p-1.5 bg-slate-100/90 rounded-xl h-auto border border-slate-200/60 shadow-inner">
+            <TabsTrigger value="overview" className="px-3.5 py-2 text-xs font-semibold rounded-lg shrink-0">Today Visits ({stats.visits})</TabsTrigger>
+            <TabsTrigger value="rides" className="px-3.5 py-2 text-xs font-semibold rounded-lg shrink-0">Total Rides ({stats.rides})</TabsTrigger>
+            <TabsTrigger value="drivers" className="px-3.5 py-2 text-xs font-semibold rounded-lg shrink-0">Car Owners ({carOwners.length})</TabsTrigger>
+            <TabsTrigger value="bike_owners" className="px-3.5 py-2 text-xs font-semibold rounded-lg shrink-0">Bike Owners ({bikeOwners.length})</TabsTrigger>
+            <TabsTrigger value="passengers" className="px-3.5 py-2 text-xs font-semibold rounded-lg shrink-0">Passengers ({stats.passengers})</TabsTrigger>
+            <TabsTrigger value="complaints" className="px-3.5 py-2 text-xs font-semibold rounded-lg shrink-0">Complaints ({stats.complaints})</TabsTrigger>
+            <TabsTrigger value="payments" className="px-3.5 py-2 text-xs font-semibold rounded-lg shrink-0">Payments ({paymentRequests.filter(p => p.status === 'pending').length})</TabsTrigger>
+            <TabsTrigger value="bookings" className="px-3.5 py-2 text-xs font-semibold rounded-lg shrink-0">Bookings</TabsTrigger>
+            <TabsTrigger value="warnings" className="px-3.5 py-2 text-xs font-semibold rounded-lg shrink-0">Warnings</TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="payments" className="mt-4 space-y-4">
           <Card>
             <CardHeader className="pb-2">
