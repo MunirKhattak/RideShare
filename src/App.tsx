@@ -244,6 +244,33 @@ export default function App() {
     toast.info(title, { description: body });
   };
 
+  const [pendingAdminCount, setPendingAdminCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!user || (user.email !== 'munirkhattak.pk@gmail.com' && profile?.role !== 'admin')) {
+      setPendingAdminCount(0);
+      return;
+    }
+
+    let pCount = 0;
+    let cCount = 0;
+
+    const unsubP = onSnapshot(query(collection(db, 'paymentRequests'), where('status', '==', 'pending')), (snap) => {
+      pCount = snap.size;
+      setPendingAdminCount(pCount + cCount);
+    }, (err) => console.error("Error listening pending payments:", err));
+
+    const unsubC = onSnapshot(query(collection(db, 'complaints'), where('status', '==', 'pending')), (snap) => {
+      cCount = snap.size;
+      setPendingAdminCount(pCount + cCount);
+    }, (err) => console.error("Error listening pending complaints:", err));
+
+    return () => {
+      unsubP();
+      unsubC();
+    };
+  }, [user, profile]);
+
   const registerFCMToken = async (currentUser: User) => {
     try {
       const supported = await isSupported();
@@ -903,6 +930,7 @@ export default function App() {
     // Admin Notifications
     let unsubAdminComplaints = () => {};
     let unsubAdminWarnings = () => {};
+    let unsubAdminPaymentReqs = () => {};
     
     if (profile.role === 'admin' || user.email === 'munirkhattak.pk@gmail.com') {
       const qComplaints = query(collection(db, 'complaints'), where('status', '==', 'pending'), orderBy('createdAt', 'desc'), limit(1));
@@ -911,7 +939,7 @@ export default function App() {
         if (initComplaints) { initComplaints = false; return; }
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added') {
-            showNotification('New Complaint', {
+            showNotification('New Complaint ⚠️', {
               body: 'A new complaint has been submitted.',
               tag: `complaint-${change.doc.id}`
             });
@@ -928,6 +956,21 @@ export default function App() {
             showNotification('Warning Reply', {
               body: 'A user has replied to a warning.',
               tag: `warning-reply-${change.doc.id}`
+            });
+          }
+        });
+      });
+
+      const qPaymentReqs = query(collection(db, 'paymentRequests'), where('status', '==', 'pending'), limit(5));
+      let initPaymentReqs = true;
+      unsubAdminPaymentReqs = onSnapshot(qPaymentReqs, (snapshot) => {
+        if (initPaymentReqs) { initPaymentReqs = false; return; }
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const reqData = change.doc.data();
+            showNotification('New EasyWallet Recharge 💰', {
+              body: `${reqData.userDisplayName || 'User'} ne Rs. ${reqData.amount} ka recharge request bheja hai.`,
+              tag: `payment-req-${change.doc.id}`
             });
           }
         });
@@ -976,6 +1019,7 @@ export default function App() {
       unsubNewRides();
       unsubAdminComplaints();
       unsubAdminWarnings();
+      unsubAdminPaymentReqs();
       unsubBookings();
       unsubUserNotifs();
       unsubAdminNotifs();
@@ -1229,7 +1273,7 @@ export default function App() {
         </motion.div>
       )}
 
-      <Header user={user} profile={profile} setView={setView} onSignInClick={() => setShowSignInModal(true)} onInstall={deferredPrompt ? handleInstall : undefined} />
+      <Header user={user} profile={profile} setView={setView} onSignInClick={() => setShowSignInModal(true)} onInstall={deferredPrompt ? handleInstall : undefined} pendingAdminCount={pendingAdminCount} />
       
 
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-8">
@@ -1324,7 +1368,7 @@ export default function App() {
   );
 }
 
-function Header({ user, profile, setView, onSignInClick, onInstall }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, onSignInClick: () => void, onInstall?: () => void }) {
+function Header({ user, profile, setView, onSignInClick, onInstall, pendingAdminCount = 0 }: { user: User | null, profile: UserProfile | null, setView: (v: any, item?: any) => void, onSignInClick: () => void, onInstall?: () => void, pendingAdminCount?: number }) {
   return (
     <header className="bg-white border-b sticky top-0 z-50 shadow-sm">
       <div className="px-4 py-3 flex items-center justify-between">
@@ -1397,15 +1441,20 @@ function Header({ user, profile, setView, onSignInClick, onInstall }: { user: Us
               <span>Install App</span>
             </Button>
           )}
-          {user && user.email === 'munirkhattak.pk@gmail.com' && (
+          {user && (user.email === 'munirkhattak.pk@gmail.com' || profile?.role === 'admin') && (
             <Button 
               variant="ghost" 
               size="sm" 
-              className="flex gap-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-full px-2 h-8"
+              className="flex gap-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-full px-2 h-8 relative"
               onClick={() => setView('admin_dashboard')}
             >
               <ShieldCheck className="w-4 h-4" />
-              <span className="text-xs font-bold">Admin</span>
+              <span className="text-xs font-bold flex items-center gap-1.5">
+                Admin
+                {pendingAdminCount > 0 && (
+                  <span className="w-2.5 h-2.5 bg-amber-400 border border-white rounded-full animate-pulse inline-block shadow-sm" />
+                )}
+              </span>
             </Button>
           )}
           {user ? (
@@ -5129,6 +5178,9 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
     }
   };
 
+  const carOwners = drivers.filter(d => d.vehicleType !== 'Bike');
+  const bikeOwners = drivers.filter(d => d.vehicleType === 'Bike');
+
   return (
     <div className="space-y-6">
       {selectedUserForWarning && (
@@ -5155,24 +5207,27 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
         </Badge>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <StatCard title="Car Owners" value={stats.drivers} icon={<Car className="w-5 h-5" />} color="bg-blue-500" onClick={() => setActiveTab('drivers')} />
-        <StatCard title="Passengers" value={stats.passengers} icon={<Users className="w-5 h-5" />} color="bg-orange-500" onClick={() => setActiveTab('passengers')} />
-        <StatCard title="Total Rides" value={stats.rides} icon={<Navigation className="w-5 h-5" />} color="bg-emerald-500" onClick={() => setActiveTab('rides')} />
-        <StatCard title="Complaints" value={stats.complaints} icon={<AlertCircle className="w-5 h-5" />} color="bg-rose-500" onClick={() => setActiveTab('complaints')} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <StatCard title="Today Visits" value={stats.visits} icon={<Eye className="w-5 h-5" />} color="bg-indigo-500" />
+        <StatCard title="Total Rides" value={stats.rides} icon={<Navigation className="w-5 h-5" />} color="bg-emerald-500" onClick={() => setActiveTab('rides')} />
+        <StatCard title="Car Owners" value={carOwners.length} icon={<Car className="w-5 h-5" />} color="bg-blue-500" onClick={() => setActiveTab('drivers')} />
+        <StatCard title="Bike Owners" value={bikeOwners.length} icon={<Bike className="w-5 h-5" />} color="bg-amber-500" onClick={() => setActiveTab('bike_owners')} />
+        <StatCard title="Passengers" value={stats.passengers} icon={<Users className="w-5 h-5" />} color="bg-orange-500" onClick={() => setActiveTab('passengers')} />
+        <StatCard title="Complaints" value={stats.complaints} icon={<AlertCircle className="w-5 h-5" />} color="bg-rose-500" onClick={() => setActiveTab('complaints')} />
+        <StatCard title="Payments" value={paymentRequests.filter(p => p.status === 'pending').length} icon={<Wallet className="w-5 h-5" />} color="bg-purple-600" onClick={() => setActiveTab('payments')} />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex w-full overflow-x-auto whitespace-nowrap mb-4 gap-2 border-b border-slate-100 pb-2">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
-          <TabsTrigger value="drivers">Owners</TabsTrigger>
-          <TabsTrigger value="passengers">Pass.</TabsTrigger>
+          <TabsTrigger value="drivers">Car Owners ({carOwners.length})</TabsTrigger>
+          <TabsTrigger value="bike_owners">Bike Owners ({bikeOwners.length})</TabsTrigger>
+          <TabsTrigger value="passengers">Passengers ({stats.passengers})</TabsTrigger>
           <TabsTrigger value="rides">Rides</TabsTrigger>
           <TabsTrigger value="bookings">Bookings</TabsTrigger>
-          <TabsTrigger value="complaints">Compl.</TabsTrigger>
-          <TabsTrigger value="warnings">Warn.</TabsTrigger>
+          <TabsTrigger value="complaints">Complaints</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger value="warnings">Warnings</TabsTrigger>
         </TabsList>
         <TabsContent value="payments" className="mt-4 space-y-4">
           <Card>
@@ -5242,7 +5297,7 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
                         <div className="flex justify-between items-start">
                           <div>
                             <p className="font-bold text-sm text-slate-800">{req.userDisplayName}</p>
-                            <p className="text-xs text-slate-500">{req.method.toUpperCase()} - {req.txnId}</p>
+                            <p className="text-xs text-slate-500">{req.method.toUpperCase()} • <span className="font-semibold text-slate-700">Sender: {req.txnId || 'N/A'}</span></p>
                             <p className="text-[10px] text-slate-400">{req.timestamp ? new Date(req.timestamp.toDate()).toLocaleString() : 'Just now'}</p>
                           </div>
                           <div className="text-right">
@@ -5350,7 +5405,11 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
         </TabsContent>
 
         <TabsContent value="drivers" className="mt-4">
-          <UserList users={drivers} onWarning={issueWarning} onDelete={deleteAccount} onProfileClick={(u) => setView('profile_view', u)} />
+          <UserList users={carOwners} onWarning={issueWarning} onDelete={deleteAccount} onProfileClick={(u) => setView('profile_view', u)} />
+        </TabsContent>
+
+        <TabsContent value="bike_owners" className="mt-4">
+          <UserList users={bikeOwners} onWarning={issueWarning} onDelete={deleteAccount} onProfileClick={(u) => setView('profile_view', u)} />
         </TabsContent>
 
         <TabsContent value="passengers" className="mt-4">
@@ -5518,11 +5577,18 @@ function UserList({ users, onWarning, onDelete, onProfileClick }: { users: UserP
               <div className="flex items-center gap-3 cursor-pointer group" onClick={() => onProfileClick(u)}>
                 <Avatar className="w-10 h-10 ring-2 ring-transparent group-hover:ring-blue-400 transition-all">
                   <AvatarImage src={u.photoURL} />
-                  <AvatarFallback>{u.displayName.charAt(0)}</AvatarFallback>
+                  <AvatarFallback>{u.displayName ? u.displayName.charAt(0) : 'U'}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{u.displayName}</p>
-                  <p className="text-xs text-slate-500 font-mono">{u.customId || 'No ID'}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{u.displayName || 'User'}</p>
+                    {u.vehicleType && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-medium bg-slate-50 border-slate-200">
+                        {u.vehicleType === 'Bike' ? '🏍️ Bike' : '🚗 Car'}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 font-mono">{u.customId || 'No ID'}{u.phoneNumber ? ` • ${u.phoneNumber}` : (u.whatsappNumber ? ` • ${u.whatsappNumber}` : '')}</p>
                 </div>
               </div>
               <div className="flex gap-2">

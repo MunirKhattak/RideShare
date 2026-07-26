@@ -84,6 +84,7 @@ export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan",
   const [bankReceiptUploaded, setBankReceiptUploaded] = useState<boolean>(false);
   const [txnReferenceId, setTxnReferenceId] = useState<string>('');
   const [rechargeSuccess, setRechargeSuccess] = useState<boolean>(false);
+  const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
   const [isWaitingForPin, setIsWaitingForPin] = useState<boolean>(false);
   const [countdown, setCountdown] = useState<number>(60);
   const [copiedText, setCopiedText] = useState<string>('');
@@ -163,9 +164,11 @@ export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan",
       setRechargeSuccess(false);
       setTxnReferenceId('');
       setBankReceiptUploaded(false);
+      setRechargeAmount('');
       
-      // Instead of direct balance add, we show success modal or alert
-      alert('Aapki recharge request Admin ko bhej di gayi hai. Approve hone par balance add ho jayega.');
+      // Show custom popup modal instead of browser native alert
+      setShowSuccessModal(true);
+      triggerConfetti();
 
       if (onShowAd) onShowAd();
 
@@ -397,13 +400,13 @@ export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan",
 
                     {/* Manual verification upload */}
                     <div className="space-y-2 mt-4">
-                      <label className="text-[11px] font-black uppercase text-slate-400 block">Transaction Verification</label>
+                      <label className="text-[11px] font-black uppercase text-slate-400 block">Sender's Account Name</label>
                       <input 
                         type="text" 
-                        placeholder="Transaction ID (TID) yaha paste kren"
+                        placeholder="Sender account ka naam lekh den"
                         value={txnReferenceId}
                         onChange={(e) => setTxnReferenceId(e.target.value)}
-                        className="w-full text-[10px] sm:text-xs font-black p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-mono"
+                        className="w-full text-xs font-semibold p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 font-sans text-slate-800 placeholder:text-slate-400 placeholder:font-normal placeholder:text-xs"
                         required
                       />
 
@@ -417,7 +420,7 @@ export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan",
                           required
                         />
                         <label htmlFor="receipt_check" className="text-[11px] text-slate-500 font-bold cursor-pointer select-none">
-                          Maine safe mobile app se paise transfer kar diye hain.
+                          Mai ne amount transfer kr di aur oper darj ki gae details tek hain.
                         </label>
                       </div>
                     </div>
@@ -445,6 +448,41 @@ export default function WalletModal({ isOpen, onClose, driverName = "Karak Jan",
                     🔒 SSL Secured Transaction. Aapki payment tafseelat mehfooz hain.
                   </p>
                 </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Custom EasyWallet Recharge Confirmation Success Modal */}
+        <AnimatePresence>
+          {showSuccessModal && (
+            <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden p-6 text-center space-y-5 border border-slate-100"
+              >
+                {/* Header Badge */}
+                <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight">EasyWallet Recharge</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed">
+                    Apki transaction details system ko bhej di gae hain. Kuch hi dair me balance apke wallet me add ho jayega.
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => setShowSuccessModal(false)}
+                    className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-sm shadow-md transition-all active:scale-95 cursor-pointer"
+                  >
+                    OK
+                  </button>
+                </div>
               </motion.div>
             </div>
           )}
