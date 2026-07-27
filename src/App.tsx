@@ -5042,6 +5042,8 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
   const [allRequests, setAllRequests] = useState<RideRequest[]>([]);
   const [paymentRequests, setPaymentRequests] = useState<WalletRechargeRequest[]>([]);
   const [paymentTab, setPaymentTab] = useState<'pending' | 'approved'>('pending');
+  const [selectedPaymentForApproval, setSelectedPaymentForApproval] = useState<{ req: WalletRechargeRequest; userCustomId: string } | null>(null);
+  const [selectedPaymentForDecline, setSelectedPaymentForDecline] = useState<WalletRechargeRequest | null>(null);
 
   useEffect(() => {
     if (!user || user.uid.startsWith('mock-')) return;
@@ -5335,56 +5337,14 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
                               variant="outline" 
                               size="sm" 
                               className="text-red-600 hover:text-red-700 hover:bg-red-50 text-xs h-7"
-                              onClick={async () => {
-                                if(window.confirm('Request decline karna chahte hain?')) {
-                                  await updateDoc(doc(db, 'paymentRequests', req.id), { status: 'declined' });
-                                  await addDoc(collection(db, 'notifications'), {
-                                    userId: req.userId,
-                                    title: 'Recharge Declined',
-                                    body: `Aapki Rs. ${req.amount} ki recharge request decline ho gayi hai.`,
-                                    read: false,
-                                    timestamp: serverTimestamp(),
-                                    type: 'payment'
-                                  });
-                                }
-                              }}
+                              onClick={() => setSelectedPaymentForDecline(req)}
                             >
                               Decline
                             </Button>
                             <Button 
                               size="sm" 
                               className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7"
-                              onClick={async () => {
-                                if(window.confirm('Rs. ' + req.amount + ' approve karna chahte hain?')) {
-                                  // Update request status
-                                  await updateDoc(doc(db, 'paymentRequests', req.id), { status: 'approved' });
-                                  
-                                  // Update user balance (increment)
-                                  const userDocRef = doc(db, 'users', req.userId);
-                                  // we don't have increment imported, so we will use a transaction or simply update based on fetched user doc
-                                  // but since we might not have 'increment' from firestore, let's fetch the user first
-                                  try {
-                                    const { getDoc } = await import('firebase/firestore');
-                                    const userSnap = await getDoc(userDocRef);
-                                    if(userSnap.exists()) {
-                                      const currentBalance = userSnap.data().walletBalance || 0;
-                                      await updateDoc(userDocRef, { walletBalance: currentBalance + req.amount });
-                                    }
-                                  } catch (e) { console.error(e) }
-                                  
-                                  // Send notification to user
-                                  await addDoc(collection(db, 'notifications'), {
-                                    userId: req.userId,
-                                    title: 'Recharge Approved!',
-                                    body: `Aapke wallet me Rs. ${req.amount} jama kar diye gaye hain.`,
-                                    read: false,
-                                    timestamp: serverTimestamp(),
-                                    type: 'payment'
-                                  });
-                                  
-                                  toast.success("Payment approved aur balance add kar diya gaya.");
-                                }
-                              }}
+                              onClick={() => setSelectedPaymentForApproval({ req, userCustomId: displayCustomId })}
                             >
                               Approve & Add Balance
                             </Button>
@@ -5584,6 +5544,224 @@ function AdminDashboard({ setView, showNotification, allRides, user }: { setView
           </div>
         </TabsContent>
       </Tabs>
+
+      {selectedPaymentForApproval && (
+        <PaymentApprovalModal 
+          req={selectedPaymentForApproval.req}
+          userCustomId={selectedPaymentForApproval.userCustomId}
+          onClose={() => setSelectedPaymentForApproval(null)}
+          onConfirm={async () => {
+            const req = selectedPaymentForApproval.req;
+            try {
+              await updateDoc(doc(db, 'paymentRequests', req.id), { status: 'approved' });
+              
+              const userDocRef = doc(db, 'users', req.userId);
+              const { getDoc } = await import('firebase/firestore');
+              const userSnap = await getDoc(userDocRef);
+              if (userSnap.exists()) {
+                const currentBalance = userSnap.data().walletBalance || 0;
+                await updateDoc(userDocRef, { walletBalance: currentBalance + req.amount });
+              }
+              
+              await addDoc(collection(db, 'notifications'), {
+                userId: req.userId,
+                title: 'Recharge Approved!',
+                body: `Aapke wallet me Rs. ${req.amount} jama kar diye gaye hain.`,
+                read: false,
+                timestamp: serverTimestamp(),
+                type: 'payment'
+              });
+              
+              toast.success(`Rs. ${req.amount} balance add kar diya gaya hai!`);
+            } catch (e) {
+              console.error(e);
+              toast.error("Approval mein masla aaya!");
+            } finally {
+              setSelectedPaymentForApproval(null);
+            }
+          }}
+        />
+      )}
+
+      {selectedPaymentForDecline && (
+        <PaymentDeclineModal 
+          req={selectedPaymentForDecline}
+          onClose={() => setSelectedPaymentForDecline(null)}
+          onConfirm={async () => {
+            const req = selectedPaymentForDecline;
+            try {
+              await updateDoc(doc(db, 'paymentRequests', req.id), { status: 'declined' });
+              await addDoc(collection(db, 'notifications'), {
+                userId: req.userId,
+                title: 'Recharge Declined',
+                body: `Aapki Rs. ${req.amount} ki recharge request decline ho gayi hai.`,
+                read: false,
+                timestamp: serverTimestamp(),
+                type: 'payment'
+              });
+              toast.info("Request decline kar di gayi hai.");
+            } catch (e) {
+              console.error(e);
+              toast.error("Error aaya!");
+            } finally {
+              setSelectedPaymentForDecline(null);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function PaymentApprovalModal({ 
+  req, 
+  userCustomId, 
+  onClose, 
+  onConfirm 
+}: { 
+  req: WalletRechargeRequest; 
+  userCustomId: string; 
+  onClose: () => void; 
+  onConfirm: () => Promise<void>; 
+}) {
+  const [loading, setLoading] = useState(false);
+
+  const handleConfirm = async () => {
+    setLoading(true);
+    try {
+      await onConfirm();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+      <Card className="w-full max-w-sm sm:max-w-md shadow-2xl border-slate-200 overflow-hidden rounded-2xl bg-white">
+        <CardHeader className="bg-slate-50 border-b border-slate-100 p-4 sm:p-5">
+          <CardTitle className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-slate-900">
+            <div className="p-2 bg-emerald-100 rounded-xl text-emerald-600">
+              <Wallet className="w-5 h-5" />
+            </div>
+            EasyWallet Balance Approval
+          </CardTitle>
+          <CardDescription className="text-xs text-slate-500">
+            Recharge request verify karke balance add karein
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-4 p-4 sm:p-5">
+          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 space-y-2.5 text-xs sm:text-sm">
+            <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500 font-medium">User Name:</span>
+              <span className="font-bold text-slate-900">{req.userDisplayName || 'N/A'}</span>
+            </div>
+
+            <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500 font-medium">User ID:</span>
+              <span className="font-bold font-mono text-blue-600">{userCustomId || req.userCustomId || 'N/A'}</span>
+            </div>
+
+            <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+              <span className="text-slate-500 font-medium">Sender Name:</span>
+              <span className="font-bold text-slate-800">{req.txnId || 'N/A'}</span>
+            </div>
+
+            <div className="flex justify-between items-center pt-0.5">
+              <span className="text-slate-500 font-medium">Amount:</span>
+              <span className="font-black text-emerald-600 text-base sm:text-lg">Rs. {req.amount}</span>
+            </div>
+          </div>
+
+          <div className="text-center pt-1">
+            <p className="text-sm font-bold text-slate-800">
+              Approve krna chahte hain?
+            </p>
+          </div>
+        </CardContent>
+
+        <CardFooter className="flex gap-2.5 justify-end bg-slate-50 border-t border-slate-100 p-3.5 sm:p-4">
+          <Button 
+            variant="outline" 
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-xl text-slate-700 border-slate-300 hover:bg-slate-100 font-semibold text-xs sm:text-sm"
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleConfirm}
+            disabled={loading}
+            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-sm gap-2"
+          >
+            {loading ? 'Approving...' : 'Approve & Add Balance'}
+          </Button>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}
+
+function PaymentDeclineModal({ 
+  req, 
+  onClose, 
+  onConfirm 
+}: { 
+  req: WalletRechargeRequest; 
+  onClose: () => void; 
+  onConfirm: () => Promise<void>; 
+}) {
+  const [loading, setLoading] = useState(false);
+
+  const handleConfirm = async () => {
+    setLoading(true);
+    try {
+      await onConfirm();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+      <Card className="w-full max-w-sm sm:max-w-md shadow-2xl border-slate-200 overflow-hidden rounded-2xl bg-white">
+        <CardHeader className="bg-rose-50/50 border-b border-rose-100 p-4 sm:p-5">
+          <CardTitle className="flex items-center gap-2.5 text-base sm:text-lg font-bold text-rose-700">
+            <div className="p-2 bg-rose-100 rounded-xl text-rose-600">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            Decline Recharge Request
+          </CardTitle>
+          <CardDescription className="text-xs text-rose-600/80">
+            Recharge request decline confirmation
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-4 p-4 sm:p-5">
+          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 space-y-2 text-xs sm:text-sm">
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500 font-medium">User Name:</span>
+              <span className="font-bold text-slate-800">{req.userDisplayName}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500 font-medium">Amount:</span>
+              <span className="font-bold text-rose-600">Rs. {req.amount}</span>
+            </div>
+          </div>
+          <p className="text-center font-bold text-slate-800 text-sm">
+            Request decline karna chahte hain?
+          </p>
+        </CardContent>
+
+        <CardFooter className="flex gap-2.5 justify-end bg-slate-50 border-t border-slate-100 p-3.5 sm:p-4">
+          <Button variant="outline" onClick={onClose} disabled={loading} className="rounded-xl text-xs sm:text-sm">
+            Cancel
+          </Button>
+          <Button onClick={handleConfirm} disabled={loading} className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm">
+            {loading ? 'Declining...' : 'Decline Request'}
+          </Button>
+        </CardFooter>
+      </Card>
     </div>
   );
 }
