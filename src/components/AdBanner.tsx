@@ -26,43 +26,9 @@ export function AdBanner({ type = 'banner', className = '', onDismiss }: AdBanne
 
   if (type === 'partner') {
     return (
-      <div className={`w-full max-w-md mx-auto bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-4 flex flex-col justify-between shadow-xs hover:border-blue-400 transition-all duration-300 ${className}`}>
-        {/* Top Header Row */}
-        <div className="flex justify-between items-center mb-2.5">
-          <div className="flex items-center gap-1.5">
-            <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider">
-              AD
-            </span>
-            <span className="bg-slate-200/80 text-slate-600 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded">
-              ADVERTISEMENT
-            </span>
-          </div>
-          <span className="text-[10px] font-mono text-slate-400">
-            Google Ad Space
-          </span>
-        </div>
-
-        {/* Ad Content */}
-        <div className="my-1 text-left space-y-1">
-          <div className="flex items-center justify-between gap-2">
-            <h4 className="font-bold text-slate-900 text-sm sm:text-base leading-snug">
-              {ad.title}
-            </h4>
-            <button 
-              onClick={() => alert(`[Google Test Ad Clicked]\nAd Unit ID: ${AD_CONFIG.bannerAdUnitId}`)}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow-xs shrink-0 flex items-center gap-1 transition-transform active:scale-95"
-            >
-              {ad.cta}
-              <ExternalLink className="w-3 h-3" />
-            </button>
-          </div>
-          <p className="text-xs text-slate-600 leading-relaxed pr-2">
-            {ad.description}
-          </p>
-        </div>
-
-        {/* Bottom Pagination Dots */}
-        <div className="mt-3 pt-2.5 border-t border-slate-200/70 flex items-center justify-center gap-1.5">
+      <div className="space-y-3">
+        {/* Pagination Dots (Positioned directly under "Our Partners" heading) */}
+        <div className="flex items-center justify-center gap-1.5 -mt-3">
           {AD_CONFIG.sampleAds.map((_, idx) => (
             <button
               key={idx}
@@ -70,11 +36,56 @@ export function AdBanner({ type = 'banner', className = '', onDismiss }: AdBanne
               aria-label={`Slide ${idx + 1}`}
               className={`transition-all duration-300 rounded-full ${
                 idx === currentAdIndex 
-                  ? 'w-5 h-1.5 bg-blue-600' 
-                  : 'w-1.5 h-1.5 bg-slate-300 hover:bg-slate-400'
+                  ? 'w-6 h-1.5 bg-blue-600' 
+                  : 'w-2 h-1.5 bg-slate-300 hover:bg-slate-400'
               }`}
             />
           ))}
+        </div>
+
+        {/* Partner Ad Box */}
+        <div className={`w-full max-w-md mx-auto bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-4 sm:p-5 flex flex-col justify-between min-h-[165px] shadow-xs hover:border-blue-400 transition-all duration-300 ${className}`}>
+          {/* Top Header Row */}
+          <div className="flex justify-between items-center mb-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider">
+                AD
+              </span>
+              <span className="bg-slate-200/80 text-slate-600 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded">
+                ADVERTISEMENT
+              </span>
+            </div>
+
+            <button 
+              onClick={() => { setDismissed(true); onDismiss?.(); }}
+              className="text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 p-1 rounded-full transition-colors"
+              title="Hide Ad"
+              aria-label="Close Ad"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Ad Content */}
+          <div className="text-left space-y-1 my-auto">
+            <h4 className="font-bold text-slate-900 text-sm sm:text-base leading-snug">
+              {ad.title}
+            </h4>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              {ad.description}
+            </p>
+          </div>
+
+          {/* CTA Row */}
+          <div className="flex justify-end pt-1">
+            <button 
+              onClick={() => alert(`[Google Test Ad Clicked]\nAd Unit ID: ${AD_CONFIG.bannerAdUnitId}`)}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold px-4 py-1.5 rounded-xl shadow-xs shrink-0 flex items-center gap-1.5 transition-transform active:scale-95"
+            >
+              {ad.cta}
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
     );

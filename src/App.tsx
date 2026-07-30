@@ -3617,9 +3617,8 @@ const AnimatedFooter = memo(function AnimatedFooter({ setView }: { setView: (v: 
     <footer className="bg-white border-t pt-4 pb-4 overflow-hidden relative">
       <div className="max-w-4xl mx-auto px-4 relative">
         <div className="text-center space-y-6 relative z-20">
-          <div className="space-y-2">
+          <div className="space-y-1">
             <h3 className="text-slate-900 font-bold text-xl tracking-tight">Our Partners</h3>
-            <div className="h-1 w-12 bg-blue-600 mx-auto rounded-full" />
           </div>
 
           {/* Google AdMob / AdSense Partners Ad */}
