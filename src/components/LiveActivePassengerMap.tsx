@@ -145,6 +145,13 @@ export default function LiveActivePassengerMap({
     }
   }, [selfOrigin]);
 
+  // Reset auto-center flag when active mode turns on
+  useEffect(() => {
+    if (autoActive) {
+      hasAutoCenteredRef.current = false;
+    }
+  }, [autoActive]);
+
   // Continuous real GPS Geolocation watch + immediate position fetch
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -156,8 +163,8 @@ export default function LiveActivePassengerMap({
       };
       setDriverCoords(newCoords);
 
-      // Instantly center Leaflet map on the real user GPS location as soon as it's fetched
-      if (leafletMapInstanceRef.current) {
+      // Center Leaflet map on the real user GPS location ONCE when fetched/active mode enabled
+      if (leafletMapInstanceRef.current && !hasAutoCenteredRef.current) {
         leafletMapInstanceRef.current.setView([newCoords.lat, newCoords.lng], 13);
         hasAutoCenteredRef.current = true;
       }
