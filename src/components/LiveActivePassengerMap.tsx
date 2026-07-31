@@ -113,28 +113,64 @@ export default function LiveActivePassengerMap({
   const [newMessage, setNewMessage] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [tripStarted, setTripStarted] = useState(false);
   const [tripProgress, setTripProgress] = useState(0);
   const [tripCompleted, setTripCompleted] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const activeMsgNotifiedRef = useRef<Set<string>>(new Set());
+  const activeNotifNotifiedRef = useRef<Set<string>>(new Set());
 
-  // Default coordinates (Karak Center, Pakistan)
-  const [driverCoords, setDriverCoords] = useState({ lat: 33.1111, lng: 71.0924 });
+  // Dynamically initialize driverCoords based on selfOrigin city or Islamabad default
+  const getInitialCoords = () => {
+    const key = (selfOrigin || '').toLowerCase().trim();
+    return CITY_COORDS[key] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+  };
+
+  const [driverCoords, setDriverCoords] = useState<{ lat: number; lng: number }>(getInitialCoords);
+  const hasAutoCenteredRef = useRef(false);
 
   const currentUid = auth.currentUser?.uid || driverProfile?.uid || driverProfile?.id;
 
-  // Continuous real GPS Geolocation watch
+  // Update driverCoords when selfOrigin changes if GPS hasn't auto-centered yet
+  useEffect(() => {
+    const key = (selfOrigin || '').toLowerCase().trim();
+    if (CITY_COORDS[key]) {
+      const cityCoords = CITY_COORDS[key];
+      setDriverCoords(cityCoords);
+      if (leafletMapInstanceRef.current && !hasAutoCenteredRef.current) {
+        leafletMapInstanceRef.current.setView([cityCoords.lat, cityCoords.lng], 13);
+      }
+    }
+  }, [selfOrigin]);
+
+  // Continuous real GPS Geolocation watch + immediate position fetch
   useEffect(() => {
     if (!navigator.geolocation) return;
 
+    const handlePos = (position: GeolocationPosition) => {
+      const newCoords = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      };
+      setDriverCoords(newCoords);
+
+      // Instantly center Leaflet map on the real user GPS location as soon as it's fetched
+      if (leafletMapInstanceRef.current) {
+        leafletMapInstanceRef.current.setView([newCoords.lat, newCoords.lng], 13);
+        hasAutoCenteredRef.current = true;
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      handlePos,
+      (err) => console.warn("GPS direct fetch warning:", err),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+
     const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        setDriverCoords({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
-      },
+      handlePos,
       (error) => {
         console.warn("Using default GPS center:", error.message);
       },
@@ -159,8 +195,8 @@ export default function LiveActivePassengerMap({
       avatar: driverProfile?.photoURL || driverProfile?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
       phone: driverProfile?.phoneNumber || driverProfile?.phone || driverProfile?.whatsappNumber || driverProfile?.whatsapp || '',
       whatsapp: driverProfile?.whatsappNumber || driverProfile?.whatsapp || driverProfile?.phoneNumber || driverProfile?.phone || '',
-      origin: selfOrigin || 'Karak',
-      destination: selfDestination || 'Islamabad',
+      origin: selfOrigin || 'Islamabad',
+      destination: selfDestination || 'Karak',
       vehicleType: selfVehicleType === 'All' ? (driverProfile?.vehicleType || 'Car') : selfVehicleType,
       role: userRole,
       lat: driverCoords.lat,
@@ -176,8 +212,14 @@ export default function LiveActivePassengerMap({
     });
   }, [currentUid, autoActive, driverCoords.lat, driverCoords.lng, selfOrigin, selfDestination, selfVehicleType, userRole, driverProfile]);
 
-  // Clean up live status on unmount or when turning offline
+  // Clean up live status immediately when turning offline or unmounting
   useEffect(() => {
+    if (!autoActive) {
+      if (currentUid) {
+        setDoc(doc(db, 'activeLocations', currentUid), { isLive: false, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+      }
+      setActiveTargets([]);
+    }
     return () => {
       if (currentUid && autoActive) {
         setDoc(doc(db, 'activeLocations', currentUid), { isLive: false, updatedAt: Date.now() }, { merge: true }).catch(() => {});
@@ -189,38 +231,43 @@ export default function LiveActivePassengerMap({
   useEffect(() => {
     if (!autoActive) return;
 
-    const targetsMap: { [id: string]: PassengerProfile } = {};
+    const activeLocsMap: { [id: string]: PassengerProfile } = {};
+    const ridesMap: { [id: string]: PassengerProfile } = {};
 
     const syncTargets = () => {
-      setActiveTargets(Object.values(targetsMap));
+      const combined: { [id: string]: PassengerProfile } = { ...ridesMap, ...activeLocsMap };
+      setActiveTargets(Object.values(combined));
     };
 
     // 1. Real-time listener for activeLocations
     const unsubActiveLocs = onSnapshot(collection(db, 'activeLocations'), (snapshot) => {
-      const now = Date.now();
       const targetRole = userRole === 'passenger' ? 'driver' : 'passenger';
+
+      // Clear previous active locations to prevent stale/offline users from persisting
+      for (const key in activeLocsMap) delete activeLocsMap[key];
 
       snapshot.docs.forEach(docSnap => {
         const data = docSnap.data();
+
+        // Strictly show users who are currently LIVE in real-time (isLive === true)
         if (
           data.uid &&
           data.uid !== currentUid &&
           data.isLive === true &&
-          (data.role === targetRole || data.role === 'both') &&
-          (!data.updatedAt || now - data.updatedAt < 2 * 60 * 60 * 1000)
+          (data.role === targetRole || data.role === 'both')
         ) {
-          targetsMap[data.uid] = {
+          activeLocsMap[data.uid] = {
             id: data.uid,
             name: data.name || 'Active User',
             avatar: data.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
             phone: data.phone || '',
             whatsapp: data.whatsapp || data.phone || '',
-            origin: data.origin || 'Karak',
-            destination: data.destination || 'Islamabad',
+            origin: data.origin || 'Islamabad',
+            destination: data.destination || 'Karak',
             rating: data.rating || 5.0,
             trips: data.trips || 0,
-            lat: data.lat || 33.1111,
-            lng: data.lng || 71.0924,
+            lat: data.lat || 33.6844,
+            lng: data.lng || 73.0479,
             vehicleType: data.vehicleType === 'Bike' ? 'Bike' : 'Car',
             role: data.role
           };
@@ -230,34 +277,45 @@ export default function LiveActivePassengerMap({
       syncTargets();
     }, (err) => console.warn("activeLocations sync warning:", err));
 
-    // 2. Real-time listener for rides or rideRequests
+    // 2. Real-time listener for rides or rideRequests (Only for users who are currently LIVE)
     const collName = userRole === 'passenger' ? 'rides' : 'rideRequests';
     const unsubRides = onSnapshot(collection(db, collName), (snapshot) => {
+      const now = Date.now();
+      for (const key in ridesMap) delete ridesMap[key];
+
       snapshot.docs.forEach(docSnap => {
         const data = docSnap.data();
         const targetId = userRole === 'passenger' ? (data.driverId || docSnap.id) : (data.passengerId || docSnap.id);
 
-        if (targetId && targetId !== currentUid && (data.status === 'available' || data.status === 'pending')) {
+        const createdAtMs = data.createdAt?.toMillis ? data.createdAt.toMillis() : (data.createdAt || 0);
+        const isRecentPost = createdAtMs ? (now - createdAtMs < 2 * 60 * 60 * 1000) : true;
+
+        // ONLY display if the user is currently LIVE in activeLocations and post is pending/available
+        if (
+          targetId && 
+          targetId !== currentUid && 
+          (data.status === 'available' || data.status === 'pending') &&
+          activeLocsMap[targetId] &&
+          isRecentPost
+        ) {
           const origKey = (data.origin || '').toLowerCase().trim();
           const baseCoords = CITY_COORDS[origKey] || { lat: 33.1111 + (Math.random() - 0.5) * 0.04, lng: 71.0924 + (Math.random() - 0.5) * 0.04 };
 
-          if (!targetsMap[targetId]) {
-            targetsMap[targetId] = {
-              id: targetId,
-              name: (userRole === 'passenger' ? data.driverName : data.passengerName) || 'User',
-              avatar: (userRole === 'passenger' ? data.driverPhoto : data.passengerPhoto) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-              phone: data.phoneNumber || data.whatsappNumber || '',
-              whatsapp: data.whatsappNumber || data.phoneNumber || '',
-              origin: data.origin || 'Karak',
-              destination: data.destination || 'Islamabad',
-              rating: 4.9,
-              trips: 8,
-              lat: data.lat || baseCoords.lat,
-              lng: data.lng || baseCoords.lng,
-              vehicleType: data.vehicle === 'Bike' ? 'Bike' : 'Car',
-              role: userRole === 'passenger' ? 'driver' : 'passenger'
-            };
-          }
+          ridesMap[targetId] = {
+            id: targetId,
+            name: (userRole === 'passenger' ? data.driverName : data.passengerName) || activeLocsMap[targetId]?.name || 'User',
+            avatar: (userRole === 'passenger' ? data.driverPhoto : data.passengerPhoto) || activeLocsMap[targetId]?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+            phone: data.phoneNumber || data.whatsappNumber || activeLocsMap[targetId]?.phone || '',
+            whatsapp: data.whatsappNumber || data.phoneNumber || activeLocsMap[targetId]?.whatsapp || '',
+            origin: data.origin || activeLocsMap[targetId]?.origin || 'Karak',
+            destination: data.destination || activeLocsMap[targetId]?.destination || 'Islamabad',
+            rating: activeLocsMap[targetId]?.rating || 4.9,
+            trips: activeLocsMap[targetId]?.trips || 8,
+            lat: activeLocsMap[targetId]?.lat || data.lat || baseCoords.lat,
+            lng: activeLocsMap[targetId]?.lng || data.lng || baseCoords.lng,
+            vehicleType: data.vehicle === 'Bike' ? 'Bike' : 'Car',
+            role: userRole === 'passenger' ? 'driver' : 'passenger'
+          };
         }
       });
 
@@ -487,6 +545,97 @@ export default function LiveActivePassengerMap({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  // Real-time listener for incoming messages to auto-open chat modal on active screen
+  useEffect(() => {
+    const myUid = auth.currentUser?.uid;
+    if (!myUid || !autoActive) return;
+
+    const qNewMsgs = query(
+      collection(db, 'messages'),
+      where('receiverId', '==', myUid)
+    );
+
+    let initialLoad = true;
+    const unsub = onSnapshot(qNewMsgs, (snapshot) => {
+      if (initialLoad) {
+        snapshot.docs.forEach(d => activeMsgNotifiedRef.current.add(d.id));
+        initialLoad = false;
+        return;
+      }
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const msgId = change.doc.id;
+          if (activeMsgNotifiedRef.current.has(msgId)) return;
+          activeMsgNotifiedRef.current.add(msgId);
+
+          const msg = change.doc.data();
+          const senderId = msg.senderId;
+
+          if (senderId && senderId !== myUid) {
+            const targetPassenger = activeTargets.find(p => p.id === senderId);
+            if (targetPassenger) {
+              setSelectedPassenger(targetPassenger);
+            }
+            setShowChat(senderId);
+
+            toast.info(`💬 Naya Peghaam: ${msg.text.slice(0, 45)}`, {
+              description: "Chat modal active screen par open ho gaya hai."
+            });
+          }
+        }
+      });
+    }, (err) => console.warn("Live chat pop listener warning:", err));
+
+    return () => unsub();
+  }, [autoActive, activeTargets]);
+
+  // Real-time listener for incoming booking notifications in active mode
+  useEffect(() => {
+    const myUid = auth.currentUser?.uid;
+    if (!myUid || !autoActive) return;
+
+    const qNotifs = query(
+      collection(db, 'notifications'),
+      where('userId', '==', myUid),
+      where('read', '==', false)
+    );
+
+    let init = true;
+    const unsub = onSnapshot(qNotifs, (snapshot) => {
+      if (init) {
+        snapshot.docs.forEach(d => activeNotifNotifiedRef.current.add(d.id));
+        init = false;
+        return;
+      }
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const notifId = change.doc.id;
+          if (activeNotifNotifiedRef.current.has(notifId)) return;
+          activeNotifNotifiedRef.current.add(notifId);
+
+          const notif = change.doc.data();
+          if (notif.type === 'booking_request' || notif.type === 'booking_confirmed') {
+            toast.success(`📢 ${notif.title}`, {
+              description: notif.body,
+              duration: 9000
+            });
+            if (notif.type === 'booking_confirmed') {
+              setBookingConfirmed(true);
+            }
+            if (notif.senderId) {
+              const p = activeTargets.find(t => t.id === notif.senderId);
+              if (p) setSelectedPassenger(p);
+            }
+          }
+        }
+      });
+    }, (err) => console.warn("Active mode notification listener warning:", err));
+
+    return () => unsub();
+  }, [autoActive, activeTargets]);
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !showChat) return;
     const msgText = newMessage.trim();
@@ -504,9 +653,148 @@ export default function LiveActivePassengerMap({
           text: msgText,
           timestamp: serverTimestamp()
         });
+
+        // Also create a notification document in Firestore for target receiver
+        await addDoc(collection(db, 'notifications'), {
+          userId: showChat,
+          type: 'chat_message',
+          title: `Naya Peghaam (${driverProfile?.displayName || 'User'}) 💬`,
+          body: msgText,
+          read: false,
+          createdAt: serverTimestamp(),
+          senderId: myUid,
+          senderName: driverProfile?.displayName || 'User'
+        });
       } catch (err) {
         console.warn("Message save error:", err);
       }
+    }
+  };
+
+  const handleSendBookingRequest = async () => {
+    if (!selectedPassenger || isSubmittingBooking) return;
+    setIsSubmittingBooking(true);
+    const myUid = auth.currentUser?.uid;
+
+    try {
+      const bookingPayload = {
+        rideId: `active-req-${Date.now()}`,
+        type: userRole === 'driver' ? 'ride_offer' : 'ride_request',
+        passengerId: userRole === 'driver' ? selectedPassenger.id : (myUid || 'user'),
+        passengerName: userRole === 'driver' ? selectedPassenger.name : (driverProfile?.displayName || 'Passenger'),
+        passengerPhoto: userRole === 'driver' ? selectedPassenger.avatar : (driverProfile?.photoURL || ''),
+        driverId: userRole === 'driver' ? (myUid || 'driver') : selectedPassenger.id,
+        driverName: userRole === 'driver' ? (driverProfile?.displayName || 'Driver') : selectedPassenger.name,
+        driverPhoto: userRole === 'driver' ? (driverProfile?.photoURL || '') : selectedPassenger.avatar,
+        origin: selfOrigin || selectedPassenger.origin || 'Karak',
+        destination: selfDestination || selectedPassenger.destination || 'Islamabad',
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        seats: 1,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        source: 'live_active_mode'
+      };
+
+      const bookingRef = await addDoc(collection(db, 'bookings'), bookingPayload);
+
+      // 1. Notification for Target User
+      await addDoc(collection(db, 'notifications'), {
+        userId: selectedPassenger.id,
+        type: 'booking_request',
+        title: 'Naya Ride Booking Request 🚗',
+        body: `${driverProfile?.displayName || 'User'} ne Active Mode se aap ke sath booking request bheji hai! Route: ${bookingPayload.origin} ➔ ${bookingPayload.destination}`,
+        read: false,
+        createdAt: serverTimestamp(),
+        senderId: myUid,
+        senderName: driverProfile?.displayName || 'User',
+        bookingId: bookingRef.id
+      });
+
+      // 2. Notification for Sender
+      if (myUid) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: myUid,
+          type: 'booking_sent',
+          title: 'Booking Request Bhej Di Gayi 📩',
+          body: `Aap ki booking request ${selectedPassenger.name} ko bhej di gayi hai.`,
+          read: false,
+          createdAt: serverTimestamp(),
+          senderId: myUid,
+          senderName: driverProfile?.displayName || 'User',
+          bookingId: bookingRef.id
+        });
+      }
+
+      toast.success(`Mubarak! Booking request ${selectedPassenger.name} ko bhej di gayi hai.`);
+    } catch (err) {
+      console.error("Booking request error:", err);
+      toast.error("Booking request bhejne me masla aaya.");
+    } finally {
+      setIsSubmittingBooking(false);
+    }
+  };
+
+  const handleConfirmBooking = async () => {
+    if (!selectedPassenger) return;
+    setShowConfirmDialog(false);
+    setBookingConfirmed(true);
+    const myUid = auth.currentUser?.uid;
+
+    try {
+      const bookingPayload = {
+        rideId: `active-booking-${Date.now()}`,
+        type: userRole === 'driver' ? 'ride_offer' : 'ride_request',
+        passengerId: userRole === 'driver' ? selectedPassenger.id : (myUid || 'user'),
+        passengerName: userRole === 'driver' ? selectedPassenger.name : (driverProfile?.displayName || 'Passenger'),
+        passengerPhoto: userRole === 'driver' ? selectedPassenger.avatar : (driverProfile?.photoURL || ''),
+        driverId: userRole === 'driver' ? (myUid || 'driver') : selectedPassenger.id,
+        driverName: userRole === 'driver' ? (driverProfile?.displayName || 'Driver') : selectedPassenger.name,
+        driverPhoto: userRole === 'driver' ? (driverProfile?.photoURL || '') : selectedPassenger.avatar,
+        origin: selfOrigin || selectedPassenger.origin || 'Karak',
+        destination: selfDestination || selectedPassenger.destination || 'Islamabad',
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        seats: 1,
+        status: 'confirmed',
+        createdAt: serverTimestamp(),
+        source: 'live_active_mode'
+      };
+
+      const bookingRef = await addDoc(collection(db, 'bookings'), bookingPayload);
+
+      // Notification for Target User
+      await addDoc(collection(db, 'notifications'), {
+        userId: selectedPassenger.id,
+        type: 'booking_confirmed',
+        title: 'Safar Confirm Ho Gaya 🎉',
+        body: `${driverProfile?.displayName || 'User'} ne Active Mode se aap ke sath safar confirm kar diya hai! Route: ${bookingPayload.origin} ➔ ${bookingPayload.destination}`,
+        read: false,
+        createdAt: serverTimestamp(),
+        senderId: myUid,
+        senderName: driverProfile?.displayName || 'User',
+        bookingId: bookingRef.id
+      });
+
+      // Notification for Sender
+      if (myUid) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: myUid,
+          type: 'booking_confirmed',
+          title: 'Mubarak! Safar Confirm Ho Gaya 🎉',
+          body: `Aap ka safar ${selectedPassenger.name} ke sath active map par confirm ho gaya hai.`,
+          read: false,
+          createdAt: serverTimestamp(),
+          senderId: myUid,
+          senderName: driverProfile?.displayName || 'User',
+          bookingId: bookingRef.id
+        });
+      }
+
+      toast.success("Mubarak! Safar confirm ho gaya aur dono users ko notification bhej diya gaya hai.");
+    } catch (err) {
+      console.error("Confirm booking error:", err);
+      toast.success("Mubarak! Booking confirm ho gayi hai.");
     }
   };
 
@@ -845,15 +1133,25 @@ export default function LiveActivePassengerMap({
                     </button>
 
                     {/* Booking confirmation section */}
-                    <div className="border-t border-slate-100 pt-3">
+                    <div className="border-t border-slate-100 pt-3 space-y-2">
                       {!bookingConfirmed ? (
-                        <button 
-                          onClick={() => setShowConfirmDialog(true)}
-                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-10 rounded-xl shadow-lg flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          Confirm Booking
-                        </button>
+                        <>
+                          <button 
+                            onClick={handleSendBookingRequest}
+                            disabled={isSubmittingBooking}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-xs h-10 rounded-xl shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            {isSubmittingBooking ? 'Bhej rahe hain...' : 'Booking Request Bhejein'}
+                          </button>
+                          <button 
+                            onClick={() => setShowConfirmDialog(true)}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-10 rounded-xl shadow-lg flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            Confirm Booking Direct
+                          </button>
+                        </>
                       ) : (
                         <div className="space-y-2">
                           <div className="bg-emerald-50 text-emerald-800 p-2.5 rounded-xl flex items-center gap-2 border border-emerald-100 text-left">
@@ -1169,12 +1467,8 @@ export default function LiveActivePassengerMap({
                   Nahi (Cancel)
                 </Button>
                 <Button 
-                  onClick={() => {
-                    setShowConfirmDialog(false);
-                    setBookingConfirmed(true);
-                    toast.success("Mubarak! Booking confirm ho gayi hai.");
-                  }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold h-10 text-xs border-none"
+                  onClick={handleConfirmBooking}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold h-10 text-xs border-none cursor-pointer"
                 >
                   Ji Haan (Confirm)
                 </Button>

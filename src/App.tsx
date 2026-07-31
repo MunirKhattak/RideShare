@@ -190,11 +190,39 @@ export default function App() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [allRides, setAllRides] = useState<Ride[]>([]);
   const appLoadTime = useRef(Date.now());
+  const processedMsgIdsRef = useRef<Set<string>>(new Set());
+  const userActivePostsRef = useRef<Array<{ id: string; origin: string; destination: string; type: 'ride' | 'request'; status: string }>>([]);
+
+  const normalizeLocation = (loc?: string): string => {
+    if (!loc) return '';
+    return loc.trim().toLowerCase().replace(/[^\w\s]/g, '');
+  };
+
+  const isCityMatch = (city1?: string, city2?: string): boolean => {
+    const c1 = normalizeLocation(city1);
+    const c2 = normalizeLocation(city2);
+    if (!c1 || !c2) return false;
+    return c1 === c2 || c1.includes(c2) || c2.includes(c1);
+  };
+
+  const isRouteMatching = (
+    originA?: string, 
+    destA?: string, 
+    originB?: string, 
+    destB?: string
+  ): boolean => {
+    if (!originA || !destA || !originB || !destB) return false;
+    const sameDir = isCityMatch(originA, originB) && isCityMatch(destA, destB);
+    const reverseDir = isCityMatch(originA, destB) && isCityMatch(destA, originB);
+    return sameDir || reverseDir;
+  };
 
   // Notification Helper
-  const showNotification = (title: string, options?: NotificationOptions & { body?: string, tag?: string }) => {
+  const showNotification = (title: string, options?: NotificationOptions & { body?: string, tag?: string, showToast?: boolean }) => {
     if (!('Notification' in window)) {
-      toast.error("Aap ka browser notifications support nahi karta.");
+      if (options?.showToast !== false) {
+        toast.error("Aap ka browser notifications support nahi karta.");
+      }
       return;
     }
 
@@ -242,8 +270,10 @@ export default function App() {
       });
     }
 
-    // Always show in-app toast as well for immediate feedback
-    toast.info(title, { description: body });
+    // Always show in-app toast as well for immediate feedback if showToast is not false
+    if (options?.showToast !== false) {
+      toast.info(title, { description: body });
+    }
   };
 
   const [pendingAdminCount, setPendingAdminCount] = useState<number>(0);
@@ -756,6 +786,46 @@ export default function App() {
     return () => { unsubRides(); unsubReqs(); };
   }, [user, profile]);
 
+  // Real-time listener for current user's active posts (for route matching notifications)
+  useEffect(() => {
+    if (!user || user.uid.startsWith('mock-')) return;
+
+    const qMyRides = query(
+      collection(db, 'rides'),
+      where('driverId', '==', user.uid)
+    );
+    const unsubMyRides = onSnapshot(qMyRides, (snap) => {
+      const myRides = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as any))
+        .filter(r => r.status === 'available');
+
+      userActivePostsRef.current = [
+        ...userActivePostsRef.current.filter(p => p.type === 'request'),
+        ...myRides.map(r => ({ id: r.id, origin: r.origin, destination: r.destination, type: 'ride' as const, status: r.status }))
+      ];
+    }, (err) => console.warn("My rides listener warning:", err));
+
+    const qMyReqs = query(
+      collection(db, 'rideRequests'),
+      where('passengerId', '==', user.uid)
+    );
+    const unsubMyReqs = onSnapshot(qMyReqs, (snap) => {
+      const myReqs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as any))
+        .filter(r => r.status === 'pending' || r.status === 'available');
+
+      userActivePostsRef.current = [
+        ...userActivePostsRef.current.filter(p => p.type === 'ride'),
+        ...myReqs.map(r => ({ id: r.id, origin: r.origin, destination: r.destination, type: 'request' as const, status: r.status }))
+      ];
+    }, (err) => console.warn("My requests listener warning:", err));
+
+    return () => {
+      unsubMyRides();
+      unsubMyReqs();
+    };
+  }, [user]);
+
   // Notification Listener
   useEffect(() => {
     if (!user || !profile || user.uid.startsWith('mock-')) return;
@@ -799,7 +869,7 @@ export default function App() {
       );
     }
 
-    // 1. Listen for new ride requests (for drivers)
+    // 1. Listen for new ride requests (only notify if route matches user's active post)
     const qNewRequests = query(
       collection(db, 'rideRequests'),
       where('status', '==', 'pending'),
@@ -809,21 +879,23 @@ export default function App() {
     
     const unsubNewRequests = onSnapshot(qNewRequests, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added' && profile.role === 'driver') {
+        if (change.type === 'added') {
           const req = change.doc.data() as RideRequest;
           // Only notify if it's not the user's own request AND it's new (after app load)
           const isNew = !req.createdAt || (req.createdAt.toMillis && req.createdAt.toMillis() > appLoadTime.current - 10000);
           
           if (req.passengerId !== user.uid && isNew) {
-            // Filter out Karachi if it's bothering the user
-            if (req.origin?.toLowerCase().includes('karachi') || req.destination?.toLowerCase().includes('karachi')) {
-              return;
-            }
+            // Check if current user has an active matching post (ride offer or request) on this route
+            const hasMatchingPost = userActivePostsRef.current.some(myPost => 
+              isRouteMatching(myPost.origin, myPost.destination, req.origin, req.destination)
+            );
 
-            showNotification('New Ride Request', {
-              body: `${req.passengerName} needs a ride to ${req.destination}`,
-              tag: `new-request-${change.doc.id}`
-            });
+            if (hasMatchingPost) {
+              showNotification('Aapke Route Ki Nayi Ride Request 🚗', {
+                body: `${req.passengerName || 'Passenger'} ko ${req.origin || ''} se ${req.destination || ''} ki ride chahye.`,
+                tag: `new-request-${change.doc.id}`
+              });
+            }
           }
         }
       });
@@ -859,7 +931,20 @@ export default function App() {
       where('receiverId', '==', user.uid)
     );
     
+    let isInitialMessages = true;
     const unsubMessages = onSnapshot(qMessages, (snapshot) => {
+      if (isInitialMessages) {
+        snapshot.docs.forEach((docSnap) => {
+          processedMsgIdsRef.current.add(docSnap.id);
+          const msg = docSnap.data() as ChatMessage;
+          if (msg.status === 'sent') {
+            updateDoc(doc(db, 'messages', docSnap.id), { status: 'delivered' }).catch(console.error);
+          }
+        });
+        isInitialMessages = false;
+        return;
+      }
+
       // Mark any newly cached messages intended for us as 'delivered' if currently 'sent'
       snapshot.docs.forEach((docSnap) => {
         const msg = docSnap.data() as ChatMessage;
@@ -870,32 +955,34 @@ export default function App() {
 
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
+          const msgId = change.doc.id;
+          if (processedMsgIdsRef.current.has(msgId)) return;
+          processedMsgIdsRef.current.add(msgId);
+
           const msg = change.doc.data() as ChatMessage;
-          const isNew = !msg.timestamp || (msg.timestamp.toMillis && msg.timestamp.toMillis() > appLoadTime.current - 10000);
           
-          if (isNew) {
-            // Check if the user is already viewing this chat to avoid double-notification
-            const isCurrentlyChatting = view === 'chat' && (
-              selectedItem?.otherUser?.uid === msg.senderId ||
-              selectedItem?.chat?.otherId === msg.senderId ||
-              selectedItem?.driverId === msg.senderId ||
-              selectedItem?.passengerId === msg.senderId
-            );
+          // Check if the user is already viewing this chat to avoid double-notification
+          const isCurrentlyChatting = (view === 'chat' || view === 'messages') && (
+            selectedItem?.otherUser?.uid === msg.senderId ||
+            selectedItem?.chat?.otherId === msg.senderId ||
+            selectedItem?.driverId === msg.senderId ||
+            selectedItem?.passengerId === msg.senderId
+          );
 
-            if (!isCurrentlyChatting) {
-              showNotification('New Message', {
-                body: msg.text,
-                tag: `msg-${change.doc.id}`
-              });
+          if (!isCurrentlyChatting && msg.senderId !== user.uid) {
+            showNotification('Naya Peghaam', {
+              body: msg.text,
+              tag: `msg-${msgId}`,
+              showToast: false
+            });
 
-              toast("Naya Peghaam", {
-                description: msg.text.length > 50 ? `${msg.text.slice(0, 50)}...` : msg.text,
-                action: {
-                  label: "Inbox",
-                  onClick: () => setView('messages')
-                }
-              });
-            }
+            toast("Naya Peghaam 💬", {
+              description: msg.text.length > 50 ? `${msg.text.slice(0, 50)}...` : msg.text,
+              action: {
+                label: "Inbox",
+                onClick: () => setView('messages')
+              }
+            });
           }
         }
       });
@@ -903,7 +990,23 @@ export default function App() {
       console.warn("Global qMessages listener issue, handled gracefully:", error);
     });
 
-    // 4. Listen for new rides (for passengers)
+    // Handle Service Worker notification click events without app reload
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
+        const notifData = event.data.data;
+        if (notifData?.type === 'booking') {
+          setView('my_rides');
+        } else {
+          setView('messages');
+        }
+      }
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    }
+
+    // 4. Listen for new rides (only notify if route matches user's active post)
     const qNewRides = query(
       collection(db, 'rides'),
       where('status', '==', 'available'),
@@ -913,20 +1016,22 @@ export default function App() {
     
     const unsubNewRides = onSnapshot(qNewRides, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added' && profile.role === 'passenger') {
+        if (change.type === 'added') {
           const ride = change.doc.data() as Ride;
           const isNew = !ride.createdAt || (ride.createdAt.toMillis && ride.createdAt.toMillis() > appLoadTime.current - 10000);
           
           if (ride.driverId !== user.uid && isNew) {
-            // Filter out Karachi
-            if (ride.origin?.toLowerCase().includes('karachi') || ride.destination?.toLowerCase().includes('karachi')) {
-              return;
-            }
+            // Check if current user has an active matching post (ride request or offer) on this route
+            const hasMatchingPost = userActivePostsRef.current.some(myPost => 
+              isRouteMatching(myPost.origin, myPost.destination, ride.origin, ride.destination)
+            );
 
-            showNotification('New Ride Available', {
-              body: `${ride.driverName} is going to ${ride.destination}`,
-              tag: `new-ride-${change.doc.id}`
-            });
+            if (hasMatchingPost) {
+              showNotification('Aapke Route Ki Nayi Ride Available 🚗', {
+                body: `${ride.driverName || 'Car Owner'} ${ride.origin || ''} se ${ride.destination || ''} ja rha hai.`,
+                tag: `new-ride-${change.doc.id}`
+              });
+            }
           }
         }
       });
@@ -2563,7 +2668,15 @@ function Dashboard({
   const [activeRidesList, setActiveRidesList] = useState<any[]>([]);
   const [activeRequestsList, setActiveRequestsList] = useState<any[]>([]);
   const [showLiveMap, setShowLiveMap] = useState(false);
-  const [autoActive, setAutoActive] = useState(false);
+  const [autoActive, setAutoActiveState] = useState<boolean>(() => {
+    const saved = localStorage.getItem('easy_travel_auto_active');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const setAutoActive = (val: boolean) => {
+    setAutoActiveState(val);
+    localStorage.setItem('easy_travel_auto_active', String(val));
+  };
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [showGpsModal, setShowGpsModal] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);

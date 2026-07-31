@@ -48,8 +48,11 @@ self.addEventListener('notificationclick', (event) => {
           }
         }
         return client.focus().then(c => {
-          if (event.notification.data && event.notification.data.url) {
-            return c.navigate(event.notification.data.url);
+          if (c && c.postMessage) {
+            c.postMessage({
+              type: 'NOTIFICATION_CLICK',
+              data: event.notification.data || {}
+            });
           }
         });
       }
