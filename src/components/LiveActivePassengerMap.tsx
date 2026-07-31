@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, auth } from '../firebase';
-import { collection, doc, setDoc, onSnapshot, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, onSnapshot, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface PassengerProfile {
   id: string;
@@ -111,9 +111,10 @@ export default function LiveActivePassengerMap({
   const [showChat, setShowChat] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<{sender: 'me' | 'them', text: string, time: string}[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
+  const [incomingRequests, setIncomingRequests] = useState<{ [senderId: string]: string }>({});
+  const [bookingSentTo, setBookingSentTo] = useState<{ [targetId: string]: boolean }>({});
   const [tripStarted, setTripStarted] = useState(false);
   const [tripProgress, setTripProgress] = useState(0);
   const [tripCompleted, setTripCompleted] = useState(false);
@@ -611,7 +612,13 @@ export default function LiveActivePassengerMap({
     let init = true;
     const unsub = onSnapshot(qNotifs, (snapshot) => {
       if (init) {
-        snapshot.docs.forEach(d => activeNotifNotifiedRef.current.add(d.id));
+        snapshot.docs.forEach(d => {
+          activeNotifNotifiedRef.current.add(d.id);
+          const notif = d.data();
+          if (notif.type === 'booking_request' && notif.senderId && notif.bookingId) {
+            setIncomingRequests(prev => ({ ...prev, [notif.senderId]: notif.bookingId }));
+          }
+        });
         init = false;
         return;
       }
@@ -623,14 +630,28 @@ export default function LiveActivePassengerMap({
           activeNotifNotifiedRef.current.add(notifId);
 
           const notif = change.doc.data();
-          if (notif.type === 'booking_request' || notif.type === 'booking_confirmed') {
-            toast.success(`📢 ${notif.title}`, {
-              description: notif.body,
-              duration: 9000
-            });
-            if (notif.type === 'booking_confirmed') {
-              setBookingConfirmed(true);
+          if (notif.type === 'booking_request') {
+            if (notif.senderId && notif.bookingId) {
+              setIncomingRequests(prev => ({ ...prev, [notif.senderId]: notif.bookingId }));
             }
+            toast.info(`📢 ${notif.title}`, {
+              description: notif.body,
+              duration: 15000,
+              action: {
+                label: 'Confirm Karein',
+                onClick: () => handleAcceptBookingRequest(notif.bookingId, notif.senderId)
+              }
+            });
+            if (notif.senderId) {
+              const p = activeTargets.find(t => t.id === notif.senderId);
+              if (p) setSelectedPassenger(p);
+            }
+          } else if (notif.type === 'booking_confirmed') {
+            toast.success(`🎉 ${notif.title}`, {
+              description: notif.body,
+              duration: 12000
+            });
+            setBookingConfirmed(true);
             if (notif.senderId) {
               const p = activeTargets.find(t => t.id === notif.senderId);
               if (p) setSelectedPassenger(p);
@@ -733,6 +754,7 @@ export default function LiveActivePassengerMap({
         });
       }
 
+      setBookingSentTo(prev => ({ ...prev, [selectedPassenger.id]: true }));
       toast.success(`Mubarak! Booking request ${selectedPassenger.name} ko bhej di gayi hai.`);
     } catch (err) {
       console.error("Booking request error:", err);
@@ -742,66 +764,44 @@ export default function LiveActivePassengerMap({
     }
   };
 
-  const handleConfirmBooking = async () => {
-    if (!selectedPassenger) return;
-    setShowConfirmDialog(false);
-    setBookingConfirmed(true);
+  const handleAcceptBookingRequest = async (bookingId?: string, senderId?: string) => {
     const myUid = auth.currentUser?.uid;
+    const targetSenderId = senderId || selectedPassenger?.id;
+    setIsSubmittingBooking(true);
 
     try {
-      const bookingPayload = {
-        rideId: `active-booking-${Date.now()}`,
-        type: userRole === 'driver' ? 'ride_offer' : 'ride_request',
-        passengerId: userRole === 'driver' ? selectedPassenger.id : (myUid || 'user'),
-        passengerName: userRole === 'driver' ? selectedPassenger.name : (driverProfile?.displayName || 'Passenger'),
-        passengerPhoto: userRole === 'driver' ? selectedPassenger.avatar : (driverProfile?.photoURL || ''),
-        driverId: userRole === 'driver' ? (myUid || 'driver') : selectedPassenger.id,
-        driverName: userRole === 'driver' ? (driverProfile?.displayName || 'Driver') : selectedPassenger.name,
-        driverPhoto: userRole === 'driver' ? (driverProfile?.photoURL || '') : selectedPassenger.avatar,
-        origin: selfOrigin || selectedPassenger.origin || 'Karak',
-        destination: selfDestination || selectedPassenger.destination || 'Islamabad',
-        date: new Date().toISOString().split('T')[0],
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        seats: 1,
-        status: 'confirmed',
-        createdAt: serverTimestamp(),
-        source: 'live_active_mode'
-      };
+      if (bookingId) {
+        await updateDoc(doc(db, 'bookings', bookingId), { status: 'confirmed' });
+      }
 
-      const bookingRef = await addDoc(collection(db, 'bookings'), bookingPayload);
-
-      // Notification for Target User
-      await addDoc(collection(db, 'notifications'), {
-        userId: selectedPassenger.id,
-        type: 'booking_confirmed',
-        title: 'Safar Confirm Ho Gaya 🎉',
-        body: `${driverProfile?.displayName || 'User'} ne Active Mode se aap ke sath safar confirm kar diya hai! Route: ${bookingPayload.origin} ➔ ${bookingPayload.destination}`,
-        read: false,
-        createdAt: serverTimestamp(),
-        senderId: myUid,
-        senderName: driverProfile?.displayName || 'User',
-        bookingId: bookingRef.id
-      });
-
-      // Notification for Sender
-      if (myUid) {
+      if (targetSenderId && myUid) {
         await addDoc(collection(db, 'notifications'), {
-          userId: myUid,
+          userId: targetSenderId,
           type: 'booking_confirmed',
-          title: 'Mubarak! Safar Confirm Ho Gaya 🎉',
-          body: `Aap ka safar ${selectedPassenger.name} ke sath active map par confirm ho gaya hai.`,
+          title: 'Safar Confirm Ho Gaya! 🎉',
+          body: `${driverProfile?.displayName || 'User'} ne aap ki booking request confirm kar di hai!`,
           read: false,
           createdAt: serverTimestamp(),
           senderId: myUid,
           senderName: driverProfile?.displayName || 'User',
-          bookingId: bookingRef.id
+          bookingId: bookingId || ''
         });
       }
 
-      toast.success("Mubarak! Safar confirm ho gaya aur dono users ko notification bhej diya gaya hai.");
+      setBookingConfirmed(true);
+      if (targetSenderId) {
+        setIncomingRequests(prev => {
+          const updated = { ...prev };
+          delete updated[targetSenderId];
+          return updated;
+        });
+      }
+      toast.success("Mubarak! Safar booking confirm ho gayi hai. 🎉");
     } catch (err) {
-      console.error("Confirm booking error:", err);
-      toast.success("Mubarak! Booking confirm ho gayi hai.");
+      console.error("Accept booking error:", err);
+      toast.error("Booking confirm karne me masla aaya.");
+    } finally {
+      setIsSubmittingBooking(false);
     }
   };
 
@@ -1141,25 +1141,7 @@ export default function LiveActivePassengerMap({
 
                     {/* Booking confirmation section */}
                     <div className="border-t border-slate-100 pt-3 space-y-2">
-                      {!bookingConfirmed ? (
-                        <>
-                          <button 
-                            onClick={handleSendBookingRequest}
-                            disabled={isSubmittingBooking}
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-xs h-10 rounded-xl shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                          >
-                            <Send className="w-3.5 h-3.5" />
-                            {isSubmittingBooking ? 'Bhej rahe hain...' : 'Booking Request Bhejein'}
-                          </button>
-                          <button 
-                            onClick={() => setShowConfirmDialog(true)}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-10 rounded-xl shadow-lg flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            Confirm Booking Direct
-                          </button>
-                        </>
-                      ) : (
+                      {bookingConfirmed ? (
                         <div className="space-y-2">
                           <div className="bg-emerald-50 text-emerald-800 p-2.5 rounded-xl flex items-center gap-2 border border-emerald-100 text-left">
                             <Check className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1181,6 +1163,48 @@ export default function LiveActivePassengerMap({
                             Reset / Naya Safar Dhoonden
                           </button>
                         </div>
+                      ) : incomingRequests[selectedPassenger.id] ? (
+                        <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl space-y-2 text-left">
+                          <p className="text-xs font-bold text-emerald-900 flex items-center gap-1.5 font-sans">
+                            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                            Is user ne aap ko Booking Request bheji hai!
+                          </p>
+                          <button 
+                            onClick={() => handleAcceptBookingRequest(incomingRequests[selectedPassenger.id], selectedPassenger.id)}
+                            disabled={isSubmittingBooking}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs h-10 rounded-xl shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            {isSubmittingBooking ? 'Confirm ho raha hai...' : 'Confirm Booking (Manzoor Karein)'}
+                          </button>
+                        </div>
+                      ) : bookingSentTo[selectedPassenger.id] ? (
+                        <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl space-y-2 text-left">
+                          <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5 font-sans">
+                            <Send className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            Booking Request Bhej Di Gayi Hai
+                          </p>
+                          <p className="text-[10px] text-blue-700 font-medium font-sans">
+                            {selectedPassenger.name} ke confirm karne ka intizar hai...
+                          </p>
+                          <button 
+                            onClick={handleSendBookingRequest}
+                            disabled={isSubmittingBooking}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] h-8 rounded-lg shadow-sm flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            <Send className="w-3 h-3" />
+                            {isSubmittingBooking ? 'Bhej rahe hain...' : 'Dobara Request Bhejein'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={handleSendBookingRequest}
+                          disabled={isSubmittingBooking}
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-xs h-10 rounded-xl shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          {isSubmittingBooking ? 'Bhej rahe hain...' : 'Booking Request Bhejein'}
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1441,49 +1465,7 @@ export default function LiveActivePassengerMap({
         )}
       </AnimatePresence>
 
-      {/* MUTUAL BOOKING CONFIRMATION DIALOG (Prompt requested) */}
-      <AnimatePresence>
-        {showConfirmDialog && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[1200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
-          >
-            <motion.div 
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95 }}
-              className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden p-6 text-center space-y-4"
-            >
-              <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto border border-emerald-100">
-                <Check className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <h4 className="text-base font-extrabold text-slate-900">Kia safar ki booking confirm karni hai?</h4>
-                <p className="text-xs text-slate-500 leading-relaxed font-medium">
-                  Confirm karne ke baad aap dono ka safar active map navigation screen par tabdeel ho jayega.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <Button 
-                  onClick={() => setShowConfirmDialog(false)}
-                  variant="outline"
-                  className="rounded-xl font-bold h-10 text-xs text-slate-600"
-                >
-                  Nahi (Cancel)
-                </Button>
-                <Button 
-                  onClick={handleConfirmBooking}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold h-10 text-xs border-none cursor-pointer"
-                >
-                  Ji Haan (Confirm)
-                </Button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
 
       {/* ROUTE SELECTION MODAL (Kahan Se - Kahan Tak) */}
       <AnimatePresence>
