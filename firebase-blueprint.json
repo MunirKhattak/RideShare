@@ -168,6 +168,27 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["rideId", "driverId", "passengerId", "seats", "status", "type", "createdAt"]
+    },
+    "ActiveLocation": {
+      "title": "ActiveLocation",
+      "description": "Real-time user location when active",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "avatar": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "origin": { "type": "string" },
+        "destination": { "type": "string" },
+        "vehicleType": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "isLive": { "type": "boolean" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["uid", "role", "isLive", "lat", "lng"]
     }
   },
   "firestore": {
@@ -210,6 +231,10 @@
     "/bookings/{bookingId}": {
       "schema": "Booking",
       "description": "Ride bookings between drivers and passengers"
+    },
+    "/activeLocations/{userId}": {
+      "schema": "ActiveLocation",
+      "description": "Real-time user active locations on map"
     }
   }
 }

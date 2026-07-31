@@ -336,12 +336,17 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    // Handle deep links from notifications cleanly
+    // Handle deep links and static URL routing
     const params = new URLSearchParams(window.location.search);
     const urlView = params.get('view');
-    if (urlView === 'dashboard') {
+    const path = window.location.pathname.toLowerCase();
+
+    if (urlView === 'privacy' || urlView === 'privacy_policy' || urlView === 'privacy-policy' || path.includes('/privacy')) {
+      setViewState('privacy_policy');
+    } else if (urlView === 'dashboard') {
       setViewState('dashboard');
-      window.history.replaceState({}, '', window.location.pathname);
+    } else if (urlView) {
+      setViewState(urlView as any);
     }
   }, [user]);
 
@@ -1850,24 +1855,52 @@ function MainPage({ setView, setProfile, user, profile, travelScope, onBack }: {
 }
 
 function PrivacyPolicy({ setView }: { setView: (v: any) => void }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [introText, setIntroText] = useState(
+    "Welcome to EasyTravel. We are dedicated to protecting your personal data and respecting your privacy. This Privacy Policy explains how we collect, use, share, and protect your information when you use our mobile application and services, complying fully with Google Play Console and Apple App Store Developer Guidelines."
+  );
+
   return (
-    <div className="space-y-6 py-6 pb-20 max-w-3xl mx-auto">
-      <div className="flex items-center gap-3 mb-4">
-        <Button variant="ghost" size="icon" className="rounded-full shrink-0" onClick={() => setView('main')}>
-          <ArrowLeft className="w-5 h-5 text-slate-700" />
-        </Button>
-        <div className="flex flex-col flex-1">
-          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Privacy Policy</h2>
+    <div className="space-y-6 py-6 pb-20 max-w-3xl mx-auto px-4">
+      <div className="flex items-center justify-between mb-4 gap-2">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className="rounded-full shrink-0" onClick={() => setView('main')}>
+            <ArrowLeft className="w-5 h-5 text-slate-700" />
+          </Button>
+          <div className="flex flex-col">
+            <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">Privacy Policy</h2>
+            <p className="text-xs text-slate-500 font-medium">EasyTravel Official Terms &amp; Play Store Compliance</p>
+          </div>
         </div>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => setIsEditing(!isEditing)}
+          className="rounded-xl border-slate-200 text-xs font-bold gap-1.5"
+        >
+          <Edit className="w-3.5 h-3.5 text-blue-600" />
+          {isEditing ? 'View Mode' : 'Edit Mode'}
+        </Button>
       </div>
 
       <Card className="border-none shadow-xl rounded-[2rem] overflow-hidden bg-white">
         <CardContent className="p-6 md:p-8 space-y-6">
           <div className="border-b border-slate-100 pb-4">
-            <h3 className="text-lg font-bold text-slate-800">1. Introduction</h3>
-            <p className="text-slate-600 text-sm leading-relaxed mt-2 text-justify">
-              Welcome to EasyTravel. We are dedicated to protecting your personal data and respecting your privacy. This Privacy Policy explains how we collect, use, share, and protect your information when you use our mobile application and services, complying fully with Google Play Console and Apple App Store Developer Guidelines.
-            </p>
+            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-black">1</span>
+              <span>1. Introduction</span>
+            </h3>
+            {isEditing ? (
+              <textarea 
+                value={introText}
+                onChange={(e) => setIntroText(e.target.value)}
+                className="w-full mt-3 p-3 rounded-xl border border-slate-300 text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+              />
+            ) : (
+              <p className="text-slate-700 text-sm leading-relaxed mt-2 text-justify font-normal">
+                {introText}
+              </p>
+            )}
           </div>
 
           <div className="border-b border-slate-100 pb-4">

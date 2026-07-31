@@ -25,7 +25,8 @@ import {
   GripVertical
 } from 'lucide-react';
 import { toast } from 'sonner';
-
+import { db, auth } from '../firebase';
+import { collection, doc, setDoc, onSnapshot, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface PassengerProfile {
   id: string;
@@ -40,11 +41,24 @@ interface PassengerProfile {
   lat: number;
   lng: number;
   vehicleType: 'Car' | 'Bike';
+  role?: 'driver' | 'passenger';
 }
 
-const ACTIVE_PASSENGERS: PassengerProfile[] = [];
-
-const ACTIVE_DRIVERS: PassengerProfile[] = [];
+const CITY_COORDS: { [key: string]: { lat: number; lng: number } } = {
+  'karak': { lat: 33.1111, lng: 71.0924 },
+  'karak city': { lat: 33.1111, lng: 71.0924 },
+  'latamber': { lat: 33.1021, lng: 70.8712 },
+  'islamabad': { lat: 33.6844, lng: 73.0479 },
+  'rawalpindi': { lat: 33.5651, lng: 73.0169 },
+  'peshawar': { lat: 34.0151, lng: 71.5249 },
+  'kohat': { lat: 33.5820, lng: 71.4428 },
+  'bannu': { lat: 32.9889, lng: 70.6056 },
+  'lahore': { lat: 31.5204, lng: 74.3587 },
+  'karachi': { lat: 24.8607, lng: 67.0011 },
+  'multan': { lat: 30.1575, lng: 71.5249 },
+  'mardan': { lat: 34.1989, lng: 72.0404 },
+  'swabi': { lat: 34.1202, lng: 72.4698 },
+};
 
 export default function LiveActivePassengerMap({
   userRole = 'driver',
@@ -79,32 +93,6 @@ export default function LiveActivePassengerMap({
   const [modalDestination, setModalDestination] = useState('');
   const [modalVehicleType, setModalVehicleType] = useState<'Car' | 'Bike' | 'All'>('All');
 
-  useEffect(() => {
-    const initialTargets = userRole === 'passenger' ? ACTIVE_DRIVERS : ACTIVE_PASSENGERS;
-    setActiveTargets(JSON.parse(JSON.stringify(initialTargets)));
-  }, [userRole]);
-
-  useEffect(() => {
-    if (!autoActive || activeTargets.length === 0) return;
-
-    const interval = setInterval(() => {
-      setActiveTargets(prev => 
-        prev.map(target => {
-          // Add small drift to simulate live movement (real-time moving locations)
-          const latDrift = (Math.random() - 0.5) * 0.00018;
-          const lngDrift = (Math.random() - 0.5) * 0.00018;
-          return {
-            ...target,
-            lat: target.lat + latDrift,
-            lng: target.lng + lngDrift
-          };
-        })
-      );
-    }, 4500);
-
-    return () => clearInterval(interval);
-  }, [autoActive, activeTargets.length]);
-
   const [vehicleFilter, setVehicleFilter] = useState<'All' | 'Car' | 'Bike'>('All');
 
   const filteredTargets = React.useMemo(() => {
@@ -120,36 +108,167 @@ export default function LiveActivePassengerMap({
   const leafletMapInstanceRef = useRef<any>(null);
   const markersRef = useRef<{ [key: string]: any }>({});
   
-  const [showChat, setShowChat] = useState<string | null>(null); // passenger ID
+  const [showChat, setShowChat] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<{sender: 'me' | 'them', text: string, time: string}[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
   const [tripStarted, setTripStarted] = useState(false);
-  const [tripProgress, setTripProgress] = useState(0); // 0 to 100
+  const [tripProgress, setTripProgress] = useState(0);
   const [tripCompleted, setTripCompleted] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Default driver starting coordinates (Karak Center, Pakistan)
+  // Default coordinates (Karak Center, Pakistan)
   const [driverCoords, setDriverCoords] = useState({ lat: 33.1111, lng: 71.0924 });
 
-  // Get real Geolocation of owner if permitted
+  const currentUid = auth.currentUser?.uid || driverProfile?.uid || driverProfile?.id;
+
+  // Continuous real GPS Geolocation watch
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setDriverCoords({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-        },
-        (error) => {
-          console.warn("Using default Karak GPS center:", error.message);
-        }
-      );
-    }
+    if (!navigator.geolocation) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setDriverCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+      },
+      (error) => {
+        console.warn("Using default GPS center:", error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 3000
+      }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
+
+  // Publish current user's live active location to Firestore activeLocations
+  useEffect(() => {
+    if (!currentUid || !autoActive) return;
+
+    const userLocationRef = doc(db, 'activeLocations', currentUid);
+    const payload = {
+      uid: currentUid,
+      name: driverProfile?.displayName || driverProfile?.name || 'User',
+      avatar: driverProfile?.photoURL || driverProfile?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+      phone: driverProfile?.phoneNumber || driverProfile?.phone || driverProfile?.whatsappNumber || driverProfile?.whatsapp || '',
+      whatsapp: driverProfile?.whatsappNumber || driverProfile?.whatsapp || driverProfile?.phoneNumber || driverProfile?.phone || '',
+      origin: selfOrigin || 'Karak',
+      destination: selfDestination || 'Islamabad',
+      vehicleType: selfVehicleType === 'All' ? (driverProfile?.vehicleType || 'Car') : selfVehicleType,
+      role: userRole,
+      lat: driverCoords.lat,
+      lng: driverCoords.lng,
+      rating: driverProfile?.rating || 5.0,
+      trips: driverProfile?.trips || 0,
+      isLive: true,
+      updatedAt: Date.now()
+    };
+
+    setDoc(userLocationRef, payload, { merge: true }).catch(err => {
+      console.warn("Active location publish failed:", err);
+    });
+  }, [currentUid, autoActive, driverCoords.lat, driverCoords.lng, selfOrigin, selfDestination, selfVehicleType, userRole, driverProfile]);
+
+  // Clean up live status on unmount or when turning offline
+  useEffect(() => {
+    return () => {
+      if (currentUid && autoActive) {
+        setDoc(doc(db, 'activeLocations', currentUid), { isLive: false, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+      }
+    };
+  }, [currentUid, autoActive]);
+
+  // Listen to Firestore activeLocations + rides / rideRequests in real time
+  useEffect(() => {
+    if (!autoActive) return;
+
+    const targetsMap: { [id: string]: PassengerProfile } = {};
+
+    const syncTargets = () => {
+      setActiveTargets(Object.values(targetsMap));
+    };
+
+    // 1. Real-time listener for activeLocations
+    const unsubActiveLocs = onSnapshot(collection(db, 'activeLocations'), (snapshot) => {
+      const now = Date.now();
+      const targetRole = userRole === 'passenger' ? 'driver' : 'passenger';
+
+      snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        if (
+          data.uid &&
+          data.uid !== currentUid &&
+          data.isLive === true &&
+          (data.role === targetRole || data.role === 'both') &&
+          (!data.updatedAt || now - data.updatedAt < 2 * 60 * 60 * 1000)
+        ) {
+          targetsMap[data.uid] = {
+            id: data.uid,
+            name: data.name || 'Active User',
+            avatar: data.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+            phone: data.phone || '',
+            whatsapp: data.whatsapp || data.phone || '',
+            origin: data.origin || 'Karak',
+            destination: data.destination || 'Islamabad',
+            rating: data.rating || 5.0,
+            trips: data.trips || 0,
+            lat: data.lat || 33.1111,
+            lng: data.lng || 71.0924,
+            vehicleType: data.vehicleType === 'Bike' ? 'Bike' : 'Car',
+            role: data.role
+          };
+        }
+      });
+
+      syncTargets();
+    }, (err) => console.warn("activeLocations sync warning:", err));
+
+    // 2. Real-time listener for rides or rideRequests
+    const collName = userRole === 'passenger' ? 'rides' : 'rideRequests';
+    const unsubRides = onSnapshot(collection(db, collName), (snapshot) => {
+      snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        const targetId = userRole === 'passenger' ? (data.driverId || docSnap.id) : (data.passengerId || docSnap.id);
+
+        if (targetId && targetId !== currentUid && (data.status === 'available' || data.status === 'pending')) {
+          const origKey = (data.origin || '').toLowerCase().trim();
+          const baseCoords = CITY_COORDS[origKey] || { lat: 33.1111 + (Math.random() - 0.5) * 0.04, lng: 71.0924 + (Math.random() - 0.5) * 0.04 };
+
+          if (!targetsMap[targetId]) {
+            targetsMap[targetId] = {
+              id: targetId,
+              name: (userRole === 'passenger' ? data.driverName : data.passengerName) || 'User',
+              avatar: (userRole === 'passenger' ? data.driverPhoto : data.passengerPhoto) || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+              phone: data.phoneNumber || data.whatsappNumber || '',
+              whatsapp: data.whatsappNumber || data.phoneNumber || '',
+              origin: data.origin || 'Karak',
+              destination: data.destination || 'Islamabad',
+              rating: 4.9,
+              trips: 8,
+              lat: data.lat || baseCoords.lat,
+              lng: data.lng || baseCoords.lng,
+              vehicleType: data.vehicle === 'Bike' ? 'Bike' : 'Car',
+              role: userRole === 'passenger' ? 'driver' : 'passenger'
+            };
+          }
+        }
+      });
+
+      syncTargets();
+    }, (err) => console.warn("rides sync warning:", err));
+
+    return () => {
+      unsubActiveLocs();
+      unsubRides();
+    };
+  }, [autoActive, userRole, currentUid]);
 
   // Dynamically Load Leaflet Assets from CDN
   useEffect(() => {
@@ -312,16 +431,55 @@ export default function LiveActivePassengerMap({
     });
   }, [leafletLoaded, autoActive, driverCoords, selectedPassenger?.id, filteredTargets, selfOrigin, selfDestination, selfVehicleType]);
 
-  // Load chat messages based on passenger
+  // Load real-time chat messages from Firestore
   useEffect(() => {
-    if (showChat) {
-      const passenger = activeTargets.find(p => p.id === showChat);
+    if (!showChat) return;
+
+    const passenger = activeTargets.find(p => p.id === showChat);
+    const myUid = auth.currentUser?.uid;
+
+    if (!myUid || showChat.startsWith('pass-') || showChat.startsWith('driver-')) {
       setChatMessages([
         { sender: 'them', text: `Assalam-o-Alaikum! Kia aap abhi ${passenger?.destination || 'Destination'} ja rahe hain?`, time: '10:02 AM' },
         { sender: 'me', text: 'Walaikum Assalam. Ji haan, mai udhar hi nikalne laga hoon.', time: '10:03 AM' },
         { sender: 'them', text: 'Boht behtareen! Mujhse booking confirm karlein taake hum time pe nikal sakein.', time: '10:04 AM' }
       ]);
+      return;
     }
+
+    const q = query(
+      collection(db, 'messages'),
+      where('participants', 'array-contains', myUid)
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const msgs: { sender: 'me' | 'them', text: string, time: string }[] = [];
+      snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.participants && data.participants.includes(showChat)) {
+          const isMe = data.senderId === myUid;
+          let timeStr = 'Abhi';
+          if (data.timestamp?.toDate) {
+            timeStr = data.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+          msgs.push({
+            sender: isMe ? 'me' : 'them',
+            text: data.text || '',
+            time: timeStr
+          });
+        }
+      });
+
+      if (msgs.length > 0) {
+        setChatMessages(msgs);
+      } else {
+        setChatMessages([
+          { sender: 'them', text: `Assalam-o-Alaikum! Mai map par live hoon (${passenger?.name || 'User'}).`, time: 'Abhi' }
+        ]);
+      }
+    }, (err) => console.warn("Messages sync warning:", err));
+
+    return () => unsub();
   }, [showChat, activeTargets]);
 
   // Scroll to bottom of chat
@@ -329,22 +487,27 @@ export default function LiveActivePassengerMap({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const handleSendMessage = () => {
-    if (!newMessage.trim()) return;
-    setChatMessages(prev => [...prev, { sender: 'me', text: newMessage, time: 'Abhi' }]);
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !showChat) return;
+    const msgText = newMessage.trim();
+    const myUid = auth.currentUser?.uid;
+
+    setChatMessages(prev => [...prev, { sender: 'me', text: msgText, time: 'Abhi' }]);
     setNewMessage('');
 
-    // Simulate auto-reply from passenger
-    setTimeout(() => {
-      setChatMessages(prev => [
-        ...prev,
-        { 
-          sender: 'them', 
-          text: 'Shukriya! Meherbani farma kar screen se Booking confirm kardein taake main tayar ho jaun.', 
-          time: 'Abhi' 
-        }
-      ]);
-    }, 1500);
+    if (myUid && !showChat.startsWith('pass-') && !showChat.startsWith('driver-')) {
+      try {
+        await addDoc(collection(db, 'messages'), {
+          senderId: myUid,
+          receiverId: showChat,
+          participants: [myUid, showChat],
+          text: msgText,
+          timestamp: serverTimestamp()
+        });
+      } catch (err) {
+        console.warn("Message save error:", err);
+      }
+    }
   };
 
   const handleShareLiveLocation = () => {
