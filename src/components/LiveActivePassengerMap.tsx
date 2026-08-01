@@ -828,13 +828,35 @@ export default function LiveActivePassengerMap({
     }
   };
 
-  const handleShareLiveLocation = () => {
-    const shareLink = `https://easytravel.pk/track/live-${selectedPassenger?.id || 'trip'}-xyz`;
-    navigator.clipboard.writeText(shareLink);
-    toast.success("Live Location link copy ho gaya hai! Kisi bhi dost ya pyare ke sath share karein.", {
-      description: shareLink,
-      duration: 4000
-    });
+  const handleShareLiveLocation = async () => {
+    const originStr = selfOrigin || selectedPassenger?.origin || 'Location';
+    const destStr = selfDestination || selectedPassenger?.destination || 'Destination';
+    const shareUrl = `${window.location.origin}/?activeLiveTrack=${currentUid}`;
+    const shareText = `🚗 EasyTravel Live Active Ride GPS Tracking:\n\n📍 Route: ${originStr} ➔ ${destStr}\n⚡ Status: Live Active GPS\n\n👉 Live Track Link: ${shareUrl}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'EasyTravel Live Active Location',
+          text: shareText,
+          url: shareUrl
+        });
+        toast.success("Live Location share ho gayi!");
+        return;
+      } catch (err) {
+        // User closed share dialog or fallback
+      }
+    }
+
+    // Direct WhatsApp share fallback
+    const targetPhone = selectedPassenger?.whatsapp || selectedPassenger?.phone || '';
+    const encoded = encodeURIComponent(shareText);
+    const waUrl = targetPhone 
+      ? `https://wa.me/${targetPhone.replace(/[^0-9]/g, '')}?text=${encoded}` 
+      : `https://wa.me/?text=${encoded}`;
+    
+    window.open(waUrl, '_blank');
+    toast.success("WhatsApp khol diya gaya hai! Live Location send karein.");
   };
 
   // Simulate trip motion progress bar

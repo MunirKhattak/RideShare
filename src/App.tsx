@@ -75,7 +75,8 @@ import {
   ChevronDown,
   Wallet,
   Edit,
-  Trash2
+  Trash2,
+  Share2
 } from 'lucide-react';
 import IntracityDemo, { LOCAL_LOCATIONS } from './components/IntracityDemo';
 import LiveActivePassengerMap from './components/LiveActivePassengerMap';
@@ -87,6 +88,7 @@ import { format } from 'date-fns';
 import confetti from 'canvas-confetti';
 import LaunchSignInScreen from './components/LaunchSignInScreen';
 import WalletModal from './components/WalletModal';
+import { ShareLiveLocationModal } from './components/ShareLiveLocationModal';
 
 function Motorcycle({ className = "w-6 h-6", ...props }: React.SVGProps<SVGSVGElement>) {
   return (
@@ -1228,10 +1230,49 @@ export default function App() {
             [`rewardStatus.${bookingData.passengerId}`]: rewardStatus
           });
         }
+
+        // Notify the request sender that request was approved
+        const targetUserId = bookingData.senderId 
+          ? (bookingData.senderId === user.uid ? (bookingData.passengerId === user.uid ? bookingData.driverId : bookingData.passengerId) : bookingData.senderId)
+          : (user.uid === bookingData.driverId ? bookingData.passengerId : bookingData.driverId);
+
+        if (targetUserId && targetUserId !== user.uid) {
+          await addDoc(collection(db, 'notifications'), {
+            userId: targetUserId,
+            type: 'booking_confirmed',
+            title: 'Ride Confirm Ho Gayi! 🎉',
+            body: `${profile?.displayName || 'User'} ne aap ki booking request confirm kar di hai! Route: ${bookingData.origin} ➔ ${bookingData.destination}`,
+            read: false,
+            createdAt: serverTimestamp(),
+            senderId: user.uid,
+            senderName: profile?.displayName || 'User',
+            bookingId: bookingId,
+            source: bookingData.source || 'schedule_mode'
+          });
+        }
+
         toast.success("Booking confirm ho gayi! 🎉");
       } else if (status === 'completed') {
         toast.success("Safar mukamal ho gaya! Shukriya. 🎉");
       } else {
+        const targetUserId = bookingData.senderId
+          ? (bookingData.senderId === user.uid ? (bookingData.passengerId === user.uid ? bookingData.driverId : bookingData.passengerId) : bookingData.senderId)
+          : (user.uid === bookingData.driverId ? bookingData.passengerId : bookingData.driverId);
+
+        if (targetUserId && targetUserId !== user.uid) {
+          await addDoc(collection(db, 'notifications'), {
+            userId: targetUserId,
+            type: 'booking_cancelled',
+            title: 'Booking Cancel Ho Gayi ❌',
+            body: `${profile?.displayName || 'User'} ne booking request cancel kar di hai.`,
+            read: false,
+            createdAt: serverTimestamp(),
+            senderId: user.uid,
+            senderName: profile?.displayName || 'User',
+            bookingId: bookingId
+          });
+        }
+
         toast.info("Booking cancel kar di gayi.");
       }
     } catch (error) {
@@ -1749,11 +1790,17 @@ function NewBookingCard({
   onDismiss?: (id: string) => void,
   onOpenLiveMap?: () => void
 }) {
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+
   const isDriver = user?.uid === booking.driverId;
   const otherUserName = isDriver ? booking.passengerName : booking.driverName;
   const otherUserWhatsapp = isDriver ? booking.passengerWhatsapp : booking.driverWhatsapp;
   const isLiveActive = booking.source === 'live_active_mode' || booking.mode === 'active';
-  const isSender = booking.senderId ? (user?.uid === booking.senderId) : false;
+
+  // Robust determination of sender vs recipient
+  const isSender = booking.senderId 
+    ? (user?.uid === booking.senderId)
+    : (user?.uid === booking.passengerId && booking.type === 'ride_booking') || (user?.uid === booking.driverId && booking.type === 'request_booking');
 
   return (
     <Card className="border-none shadow-xl overflow-hidden bg-white rounded-3xl border-t-8 border-emerald-500 relative transition-all">
@@ -1891,10 +1938,10 @@ function NewBookingCard({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <Button 
-                  onClick={onOpenLiveMap}
+                  onClick={() => setShareModalOpen(true)}
                   className="h-12 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black shadow-lg shadow-blue-200/50 gap-2 text-xs sm:text-sm active:scale-95 transition-all"
                 >
-                  <MapPin className="w-4 h-4" />
+                  <Share2 className="w-4 h-4" />
                   Live Location Share Karein
                 </Button>
 
@@ -1906,6 +1953,14 @@ function NewBookingCard({
                   Safar Mukamal Hua
                 </Button>
               </div>
+
+              <ShareLiveLocationModal
+                booking={booking}
+                currentUserId={user?.uid}
+                isOpen={shareModalOpen}
+                onClose={() => setShareModalOpen(false)}
+                onOpenMap={onOpenLiveMap}
+              />
             </div>
           )}
 
