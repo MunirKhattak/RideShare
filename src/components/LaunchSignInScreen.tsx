@@ -118,15 +118,15 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
   const navigateTargetView = () => {
     const params = new URLSearchParams(window.location.search);
     const urlView = params.get('view');
-    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
-    const activeLiveTrack = params.get('activeLiveTrack');
+    const rideId = (params.get('ride') || params.get('track') || params.get('bookingId'))?.trim();
+    const activeLiveTrack = params.get('activeLiveTrack')?.trim();
     const path = window.location.pathname.toLowerCase();
 
     if (urlView === 'privacy' || urlView === 'privacy_policy' || path.includes('/privacy')) {
       setView('privacy_policy');
-    } else if (urlView === 'dashboard' || urlView === 'map' || urlView === 'live_map' || rideId || activeLiveTrack) {
+    } else if (rideId || activeLiveTrack || urlView === 'map' || urlView === 'live_map') {
       setView('dashboard');
-    } else if (urlView) {
+    } else if (urlView && urlView !== 'dashboard' && urlView !== 'main') {
       setView(urlView as any);
     } else {
       setView('main');

@@ -151,15 +151,15 @@ export default function App() {
   const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint' | 'privacy_policy'>(() => {
     const params = new URLSearchParams(window.location.search);
     const urlView = params.get('view');
-    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
-    const activeLiveTrack = params.get('activeLiveTrack');
+    const rideId = (params.get('ride') || params.get('track') || params.get('bookingId'))?.trim();
+    const activeLiveTrack = params.get('activeLiveTrack')?.trim();
     const path = window.location.pathname.toLowerCase();
 
     if (urlView === 'privacy' || urlView === 'privacy_policy' || urlView === 'privacy-policy' || path.includes('/privacy')) {
       return 'privacy_policy';
-    } else if (urlView === 'dashboard' || urlView === 'map' || urlView === 'live_map' || rideId || activeLiveTrack) {
+    } else if (rideId || activeLiveTrack || urlView === 'map' || urlView === 'live_map') {
       return 'dashboard';
-    } else if (urlView) {
+    } else if (urlView && urlView !== 'dashboard' && urlView !== 'main') {
       return urlView as any;
     }
     return 'main';
@@ -387,15 +387,15 @@ export default function App() {
     // Handle deep links and static URL routing
     const params = new URLSearchParams(window.location.search);
     const urlView = params.get('view');
-    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
-    const activeLiveTrack = params.get('activeLiveTrack');
+    const rideId = (params.get('ride') || params.get('track') || params.get('bookingId'))?.trim();
+    const activeLiveTrack = params.get('activeLiveTrack')?.trim();
     const path = window.location.pathname.toLowerCase();
 
     if (urlView === 'privacy' || urlView === 'privacy_policy' || urlView === 'privacy-policy' || path.includes('/privacy')) {
       setViewState('privacy_policy');
-    } else if (urlView === 'dashboard' || urlView === 'map' || urlView === 'live_map' || rideId || activeLiveTrack) {
+    } else if (rideId || activeLiveTrack || urlView === 'map' || urlView === 'live_map') {
       setViewState('dashboard');
-    } else if (urlView) {
+    } else if (urlView && urlView !== 'dashboard' && urlView !== 'main') {
       setViewState(urlView as any);
     }
   }, [user]);
@@ -2825,26 +2825,26 @@ function Dashboard({
   const userRole = profile?.role || 'passenger';
   const [dashboardMode, setDashboardMode] = useState<'advance' | 'active'>(() => {
     const params = new URLSearchParams(window.location.search);
-    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
-    const activeLiveTrack = params.get('activeLiveTrack');
-    return (rideId || activeLiveTrack) ? 'active' : 'advance';
+    const rideId = (params.get('ride') || params.get('track') || params.get('bookingId'))?.trim();
+    const activeLiveTrack = params.get('activeLiveTrack')?.trim();
+    return Boolean(rideId || activeLiveTrack) ? 'active' : 'advance';
   });
   const [activeRidesList, setActiveRidesList] = useState<any[]>([]);
   const [activeRequestsList, setActiveRequestsList] = useState<any[]>([]);
   const [showLiveMap, setShowLiveMap] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const urlView = params.get('view');
-    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
-    const activeLiveTrack = params.get('activeLiveTrack');
-    return Boolean(rideId || activeLiveTrack || urlView === 'map' || urlView === 'live_map');
+    const rideId = (params.get('ride') || params.get('track') || params.get('bookingId'))?.trim();
+    const activeLiveTrack = params.get('activeLiveTrack')?.trim();
+    return Boolean((rideId && rideId.length > 0) || (activeLiveTrack && activeLiveTrack.length > 0) || urlView === 'map' || urlView === 'live_map');
   });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
-    const activeLiveTrack = params.get('activeLiveTrack');
+    const rideId = (params.get('ride') || params.get('track') || params.get('bookingId'))?.trim();
+    const activeLiveTrack = params.get('activeLiveTrack')?.trim();
     const urlView = params.get('view');
-    if (rideId || activeLiveTrack || urlView === 'map' || urlView === 'live_map') {
+    if ((rideId && rideId.length > 0) || (activeLiveTrack && activeLiveTrack.length > 0) || urlView === 'map' || urlView === 'live_map') {
       setShowLiveMap(true);
       setDashboardMode('active');
     }
@@ -3032,6 +3032,9 @@ function Dashboard({
           userRole={userRole === 'driver' ? 'driver' : 'passenger'}
           driverProfile={profile} 
           onClose={() => {
+            if (window.location.search) {
+              window.history.replaceState({}, '', window.location.pathname);
+            }
             if (window.history.state?.liveMap) {
               window.history.back();
             } else {
