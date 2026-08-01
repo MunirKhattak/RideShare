@@ -140,7 +140,7 @@ export interface Booking {
   passengerName: string;
   driverName: string;
   seats: number;
-  status: 'pending' | 'confirmed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   type: 'ride_booking' | 'request_booking';
   participants: string[];
   origin: string;
@@ -149,6 +149,14 @@ export interface Booking {
   time: string;
   passengerWhatsapp?: string;
   driverWhatsapp?: string;
+  passengerPhone?: string;
+  driverPhone?: string;
+  source?: 'live_active_mode' | 'schedule_mode' | string;
+  mode?: 'active' | 'advance' | string;
+  vehicleType?: string;
+  fare?: number;
+  senderId?: string;
+  senderName?: string;
   createdAt: any;
 }
 

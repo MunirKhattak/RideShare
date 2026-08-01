@@ -742,7 +742,10 @@ export default function LiveActivePassengerMap({
         status: 'pending',
         participants: [drivId, passId],
         createdAt: serverTimestamp(),
-        source: 'live_active_mode'
+        source: 'live_active_mode',
+        mode: 'active',
+        senderId: myUid,
+        senderName: driverProfile?.displayName || driverProfile?.name || 'User'
       };
 
       const bookingRef = await addDoc(collection(db, 'bookings'), bookingPayload);
@@ -757,7 +760,8 @@ export default function LiveActivePassengerMap({
         createdAt: serverTimestamp(),
         senderId: myUid,
         senderName: driverProfile?.displayName || driverProfile?.name || 'User',
-        bookingId: bookingRef.id
+        bookingId: bookingRef.id,
+        source: 'live_active_mode'
       });
 
       // 2. Notification for Sender

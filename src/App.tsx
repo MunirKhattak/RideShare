@@ -87,6 +87,7 @@ import { format } from 'date-fns';
 import confetti from 'canvas-confetti';
 import LaunchSignInScreen from './components/LaunchSignInScreen';
 import WalletModal from './components/WalletModal';
+import { ActiveRideBookingModal } from './components/ActiveRideBookingModal';
 
 function Motorcycle({ className = "w-6 h-6", ...props }: React.SVGProps<SVGSVGElement>) {
   return (
@@ -797,7 +798,17 @@ export default function App() {
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === 'added') {
             const notif = change.doc.data();
-            showNotification(notif.title, { body: notif.body, tag: `sys-notif-${change.doc.id}` });
+            const tag = notif.bookingId ? `booking-${notif.bookingId}` : `sys-notif-${change.doc.id}`;
+            showNotification(notif.title, { 
+              body: notif.body, 
+              tag,
+              data: {
+                bookingId: notif.bookingId,
+                type: notif.type,
+                source: notif.source || 'live_active_mode',
+                url: window.location.origin
+              }
+            });
             await updateDoc(doc(db, 'notifications', change.doc.id), { read: true });
           }
         });
@@ -946,11 +957,15 @@ export default function App() {
     // Handle Service Worker notification click events without app reload
     const handleSwMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
-        const notifData = event.data.data;
-        if (notifData?.type === 'booking') {
-          setView('my_rides');
-        } else {
-          setView('messages');
+        const notifData = event.data.data || {};
+        setView('dashboard');
+        if (notifData.source === 'live_active_mode' || notifData.mode === 'active' || notifData.type === 'booking_request') {
+          setDashboardMode('active');
+        } else if (notifData.mode === 'advance' || notifData.source === 'schedule_mode') {
+          setDashboardMode('advance');
+        }
+        if (notifData.bookingId) {
+          setSelectedBookingForModal(notifData.bookingId);
         }
       }
     };
@@ -1058,17 +1073,29 @@ export default function App() {
         if (change.type === 'added') {
           const booking = change.doc.data() as Booking;
           if (booking.driverId === user.uid) {
-            showNotification('New Booking!', {
-              body: `${booking.passengerName} ne aap ki seat book ki hai.`,
-              tag: `new-booking-${change.doc.id}`
+            showNotification('Naya Ride Booking Request 🚗', {
+              body: `${booking.passengerName || 'Passenger'} ne aap ki seat book ki hai. Route: ${booking.origin} ➔ ${booking.destination}`,
+              tag: `booking-${change.doc.id}`,
+              data: {
+                bookingId: change.doc.id,
+                type: 'booking_request',
+                source: booking.source || 'live_active_mode',
+                url: window.location.origin
+              }
             });
           }
         } else if (change.type === 'modified') {
           const booking = change.doc.data() as Booking;
           if (booking.status === 'confirmed' && booking.passengerId === user.uid) {
-            showNotification('Booking Confirmed!', {
-              body: `${booking.driverName} ne aap ki booking confirm kar di hai.`,
-              tag: `booking-confirmed-${change.doc.id}`
+            showNotification('Ride Confirm Ho Gayi! 🎉', {
+              body: `${booking.driverName || 'Driver'} ne aap ki booking confirm kar di hai.`,
+              tag: `booking-${change.doc.id}`,
+              data: {
+                bookingId: change.doc.id,
+                type: 'booking_confirmed',
+                source: booking.source || 'live_active_mode',
+                url: window.location.origin
+              }
             });
           }
         }
@@ -1140,10 +1167,31 @@ export default function App() {
         time: ride.time,
         passengerWhatsapp: isRideOffer ? profile.whatsappNumber : (ride as RideRequest).whatsappNumber,
         driverWhatsapp: isRideOffer ? (ride as Ride).whatsappNumber : profile.whatsappNumber,
+        source: 'schedule_mode',
+        mode: 'advance',
+        senderId: user.uid,
+        senderName: profile.displayName || 'User',
         createdAt: serverTimestamp()
       };
 
-      await addDoc(collection(db, 'bookings'), bookingData);
+      const bookingRef = await addDoc(collection(db, 'bookings'), bookingData);
+
+      const targetUserId = isRideOffer ? (ride as Ride).driverId : (ride as RideRequest).passengerId;
+      if (targetUserId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: targetUserId,
+          type: 'booking_request',
+          title: 'Naya Ride Booking Request 🚗',
+          body: `${profile.displayName || 'User'} ne Schedule Mode se aap ke sath booking request bheji hai! Route: ${ride.origin} ➔ ${ride.destination}`,
+          read: false,
+          createdAt: serverTimestamp(),
+          senderId: user.uid,
+          senderName: profile.displayName || 'User',
+          bookingId: bookingRef.id,
+          source: 'schedule_mode'
+        });
+      }
+
       setBookingTask(null);
       toast.success("Booking request bhej di gayi hai!");
       // Show Interstitial Ad after successful booking request
@@ -2662,6 +2710,53 @@ function Dashboard({
   const [modalDestination, setModalDestination] = useState('');
   const [modalVehicleType, setModalVehicleType] = useState<'Car' | 'Bike' | 'All'>('All');
 
+  const [activeBookingModalItem, setActiveBookingModalItem] = useState<Booking | null>(null);
+  const [dismissedBookingIds, setDismissedBookingIds] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!user || !activeBookings || activeBookings.length === 0) {
+      setActiveBookingModalItem(null);
+      return;
+    }
+
+    // 1. Pending booking
+    const pendingBooking = activeBookings.find(b => {
+      if (b.status !== 'pending' || dismissedBookingIds[b.id]) return false;
+      return true;
+    });
+
+    if (pendingBooking) {
+      setActiveBookingModalItem(pendingBooking);
+      if (pendingBooking.source === 'live_active_mode' || pendingBooking.mode === 'active') {
+        setDashboardMode('active');
+      } else {
+        setDashboardMode('advance');
+      }
+      return;
+    }
+
+    // 2. Active confirmed booking (< 8 hours old)
+    const confirmedBooking = activeBookings.find(b => {
+      if (b.status !== 'confirmed' || dismissedBookingIds[b.id]) return false;
+      const createdMs = b.createdAt?.toMillis 
+        ? b.createdAt.toMillis() 
+        : (typeof b.createdAt === 'number' ? b.createdAt : Date.parse(b.createdAt) || Date.now());
+      const ageHours = (Date.now() - createdMs) / (1000 * 60 * 60);
+      return ageHours < 8;
+    });
+
+    if (confirmedBooking) {
+      setActiveBookingModalItem(confirmedBooking);
+      if (confirmedBooking.source === 'live_active_mode' || confirmedBooking.mode === 'active') {
+        setDashboardMode('active');
+      } else {
+        setDashboardMode('advance');
+      }
+    } else {
+      setActiveBookingModalItem(null);
+    }
+  }, [activeBookings, user, dismissedBookingIds]);
+
   useEffect(() => {
     if (userRole === 'driver') {
       setSelfVehicleType('Car');
@@ -3256,6 +3351,22 @@ function Dashboard({
             ))}
           </div>
         </div>
+      )}
+
+      {/* Active Ride Booking Interactive Modal */}
+      {activeBookingModalItem && user && (
+        <ActiveRideBookingModal
+          booking={activeBookingModalItem}
+          currentUserId={user.uid}
+          currentUserName={profile?.displayName || 'User'}
+          onClose={() => {
+            if (activeBookingModalItem) {
+              setDismissedBookingIds(prev => ({ ...prev, [activeBookingModalItem.id]: true }));
+            }
+            setActiveBookingModalItem(null);
+          }}
+          onOpenLiveMap={openLiveMap}
+        />
       )}
 
       {/* Wallet Modal for commission & loyalty visualization */}
