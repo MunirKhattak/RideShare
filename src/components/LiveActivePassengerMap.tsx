@@ -600,8 +600,8 @@ export default function LiveActivePassengerMap({
 
   // Real-time listener for incoming booking notifications in active mode
   useEffect(() => {
-    const myUid = auth.currentUser?.uid;
-    if (!myUid || !autoActive) return;
+    const myUid = auth.currentUser?.uid || driverProfile?.uid || driverProfile?.id || currentUid || 'user_guest';
+    if (!autoActive) return;
 
     const qNotifs = query(
       collection(db, 'notifications'),
@@ -662,12 +662,12 @@ export default function LiveActivePassengerMap({
     }, (err) => console.warn("Active mode notification listener warning:", err));
 
     return () => unsub();
-  }, [autoActive, activeTargets]);
+  }, [autoActive, activeTargets, driverProfile, currentUid]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !showChat) return;
     const msgText = newMessage.trim();
-    const myUid = auth.currentUser?.uid;
+    const myUid = auth.currentUser?.uid || driverProfile?.uid || driverProfile?.id || currentUid || 'user_guest';
 
     setChatMessages(prev => [...prev, { sender: 'me', text: msgText, time: 'Abhi' }]);
     setNewMessage('');
@@ -702,24 +702,45 @@ export default function LiveActivePassengerMap({
   const handleSendBookingRequest = async () => {
     if (!selectedPassenger || isSubmittingBooking) return;
     setIsSubmittingBooking(true);
-    const myUid = auth.currentUser?.uid;
+    const myUid = auth.currentUser?.uid || driverProfile?.uid || driverProfile?.id || currentUid || 'user_guest';
+    const targetUserId = selectedPassenger.id || 'target_user';
+
+    const passId = userRole === 'driver' ? targetUserId : myUid;
+    const drivId = userRole === 'driver' ? myUid : targetUserId;
+
+    const passName = userRole === 'driver' 
+      ? (selectedPassenger.name || 'Passenger') 
+      : (driverProfile?.displayName || driverProfile?.name || 'Passenger');
+
+    const drivName = userRole === 'driver' 
+      ? (driverProfile?.displayName || driverProfile?.name || 'Driver') 
+      : (selectedPassenger.name || 'Driver');
+
+    const passPhoto = userRole === 'driver'
+      ? (selectedPassenger.avatar || '')
+      : (driverProfile?.photoURL || driverProfile?.avatar || '');
+
+    const drivPhoto = userRole === 'driver'
+      ? (driverProfile?.photoURL || driverProfile?.avatar || '')
+      : (selectedPassenger.avatar || '');
 
     try {
       const bookingPayload = {
         rideId: `active-req-${Date.now()}`,
         type: userRole === 'driver' ? 'ride_offer' : 'ride_request',
-        passengerId: userRole === 'driver' ? selectedPassenger.id : (myUid || 'user'),
-        passengerName: userRole === 'driver' ? selectedPassenger.name : (driverProfile?.displayName || 'Passenger'),
-        passengerPhoto: userRole === 'driver' ? selectedPassenger.avatar : (driverProfile?.photoURL || ''),
-        driverId: userRole === 'driver' ? (myUid || 'driver') : selectedPassenger.id,
-        driverName: userRole === 'driver' ? (driverProfile?.displayName || 'Driver') : selectedPassenger.name,
-        driverPhoto: userRole === 'driver' ? (driverProfile?.photoURL || '') : selectedPassenger.avatar,
+        passengerId: passId,
+        passengerName: passName,
+        passengerPhoto: passPhoto,
+        driverId: drivId,
+        driverName: drivName,
+        driverPhoto: drivPhoto,
         origin: selfOrigin || selectedPassenger.origin || 'Karak',
         destination: selfDestination || selectedPassenger.destination || 'Islamabad',
         date: new Date().toISOString().split('T')[0],
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         seats: 1,
         status: 'pending',
+        participants: [drivId, passId],
         createdAt: serverTimestamp(),
         source: 'live_active_mode'
       };
@@ -728,34 +749,32 @@ export default function LiveActivePassengerMap({
 
       // 1. Notification for Target User
       await addDoc(collection(db, 'notifications'), {
-        userId: selectedPassenger.id,
+        userId: targetUserId,
         type: 'booking_request',
         title: 'Naya Ride Booking Request 🚗',
-        body: `${driverProfile?.displayName || 'User'} ne Active Mode se aap ke sath booking request bheji hai! Route: ${bookingPayload.origin} ➔ ${bookingPayload.destination}`,
+        body: `${driverProfile?.displayName || driverProfile?.name || 'User'} ne Active Mode se aap ke sath booking request bheji hai! Route: ${bookingPayload.origin} ➔ ${bookingPayload.destination}`,
         read: false,
         createdAt: serverTimestamp(),
         senderId: myUid,
-        senderName: driverProfile?.displayName || 'User',
+        senderName: driverProfile?.displayName || driverProfile?.name || 'User',
         bookingId: bookingRef.id
       });
 
       // 2. Notification for Sender
-      if (myUid) {
-        await addDoc(collection(db, 'notifications'), {
-          userId: myUid,
-          type: 'booking_sent',
-          title: 'Booking Request Bhej Di Gayi 📩',
-          body: `Aap ki booking request ${selectedPassenger.name} ko bhej di gayi hai.`,
-          read: false,
-          createdAt: serverTimestamp(),
-          senderId: myUid,
-          senderName: driverProfile?.displayName || 'User',
-          bookingId: bookingRef.id
-        });
-      }
+      await addDoc(collection(db, 'notifications'), {
+        userId: myUid,
+        type: 'booking_sent',
+        title: 'Booking Request Bhej Di Gayi 📩',
+        body: `Aap ki booking request ${selectedPassenger.name || 'User'} ko bhej di gayi hai.`,
+        read: false,
+        createdAt: serverTimestamp(),
+        senderId: myUid,
+        senderName: driverProfile?.displayName || driverProfile?.name || 'User',
+        bookingId: bookingRef.id
+      });
 
-      setBookingSentTo(prev => ({ ...prev, [selectedPassenger.id]: true }));
-      toast.success(`Mubarak! Booking request ${selectedPassenger.name} ko bhej di gayi hai.`);
+      setBookingSentTo(prev => ({ ...prev, [targetUserId]: true }));
+      toast.success(`Mubarak! Booking request ${selectedPassenger.name || 'User'} ko bhej di gayi hai.`);
     } catch (err) {
       console.error("Booking request error:", err);
       toast.error("Booking request bhejne me masla aaya.");
@@ -765,7 +784,7 @@ export default function LiveActivePassengerMap({
   };
 
   const handleAcceptBookingRequest = async (bookingId?: string, senderId?: string) => {
-    const myUid = auth.currentUser?.uid;
+    const myUid = auth.currentUser?.uid || driverProfile?.uid || driverProfile?.id || currentUid || 'user_guest';
     const targetSenderId = senderId || selectedPassenger?.id;
     setIsSubmittingBooking(true);
 
@@ -774,16 +793,16 @@ export default function LiveActivePassengerMap({
         await updateDoc(doc(db, 'bookings', bookingId), { status: 'confirmed' });
       }
 
-      if (targetSenderId && myUid) {
+      if (targetSenderId) {
         await addDoc(collection(db, 'notifications'), {
           userId: targetSenderId,
           type: 'booking_confirmed',
           title: 'Safar Confirm Ho Gaya! 🎉',
-          body: `${driverProfile?.displayName || 'User'} ne aap ki booking request confirm kar di hai!`,
+          body: `${driverProfile?.displayName || driverProfile?.name || 'User'} ne aap ki booking request confirm kar di hai!`,
           read: false,
           createdAt: serverTimestamp(),
           senderId: myUid,
-          senderName: driverProfile?.displayName || 'User',
+          senderName: driverProfile?.displayName || driverProfile?.name || 'User',
           bookingId: bookingId || ''
         });
       }

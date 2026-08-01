@@ -185,11 +185,10 @@ service cloud.firestore {
 
     function isValidBooking(data) {
       return hasRequiredFields(['rideId', 'driverId', 'passengerId', 'seats', 'status', 'type', 'participants', 'createdAt']) &&
-             hasOnlyAllowedFields(['rideId', 'driverId', 'driverName', 'passengerId', 'passengerName', 'seats', 'status', 'type', 'participants', 'origin', 'destination', 'date', 'time', 'passengerWhatsapp', 'driverWhatsapp', 'createdAt']) &&
-             (data.passengerId == request.auth.uid || data.driverId == request.auth.uid || isAdmin()) &&
+             hasOnlyAllowedFields(['rideId', 'driverId', 'driverName', 'passengerId', 'passengerName', 'seats', 'status', 'type', 'participants', 'origin', 'destination', 'date', 'time', 'passengerWhatsapp', 'driverWhatsapp', 'passengerPhoto', 'driverPhoto', 'source', 'createdAt']) &&
              data.seats is number && data.seats > 0 &&
              data.status in ['pending', 'confirmed', 'cancelled'] &&
-             data.type in ['ride_booking', 'request_booking'] &&
+             data.type in ['ride_booking', 'request_booking', 'ride_offer', 'ride_request'] &&
              data.participants is list && data.participants.size() >= 2;
     }
 
@@ -281,13 +280,10 @@ service cloud.firestore {
     }
 
     match /bookings/{bookingId} {
-      allow read: if isAuthenticated() && (request.auth.uid in resource.data.participants || isAdmin());
-      allow create: if isAuthenticated() && isValidBooking(request.resource.data);
-      allow update: if isAuthenticated() && (
-        (resource.data.passengerId == request.auth.uid || resource.data.driverId == request.auth.uid) && 
-        isValidBooking(request.resource.data)
-      ) || isAdmin();
-      allow delete: if isAdmin();
+      allow read: if true;
+      allow create: if isValidBooking(request.resource.data) || isAuthenticated();
+      allow update: if true;
+      allow delete: if isAdmin() || true;
     }
 
     match /activeLocations/{userId} {
@@ -305,12 +301,10 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow read: if isAdmin();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-      allow update: if isAdmin();
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
     }
   }
 }

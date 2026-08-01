@@ -387,55 +387,7 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!user || !profile || user.uid.startsWith('mock-')) return;
-    
-    // Check for rides/requests that need status report
-    const checkPendingReports = async () => {
-      const collections: ('rides' | 'rideRequests')[] = ['rides', 'rideRequests'];
-      const userIdField = profile.role === 'driver' ? 'driverId' : 'passengerId';
-      
-      for (const coll of collections) {
-        const q = query(
-          collection(db, coll),
-          where(userIdField, '==', user.uid),
-          where('finalStatus', '==', 'pending')
-        );
-        // We will just rely on the real-time listeners below for pending reports
-      }
-    };
-    
-    // Listen for pending reports
-    const colls: ('rides' | 'rideRequests')[] = ['rides', 'rideRequests'];
-    const userIdField = profile.role === 'driver' ? 'driverId' : 'passengerId';
-    
-    const unsubs = colls.map(coll => {
-      const q = query(
-        collection(db, coll),
-        where(userIdField, '==', user.uid),
-        where('finalStatus', '==', 'pending')
-      );
-      
-      return onSnapshot(q, (snap) => {
-        if (!snap.empty) {
-          const doc = snap.docs[0];
-          const data = doc.data();
-          // Check if date is past
-          const rideDate = new Date(data.date);
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          
-          if (rideDate <= today) {
-            setPendingStatusReport({ id: doc.id, collection: coll, ...data });
-          }
-        }
-      }, (error) => {
-        console.error(`Error listening for pending status on ${coll}:`, error);
-      });
-    });
-
-    return () => unsubs.forEach(unsub => unsub());
-  }, [user, profile]);
+  // Pending ride status popup listener disabled to prevent auto-popping "Safar Mukamal?" modals
 
   // Reward System Background Listener
   useEffect(() => {
