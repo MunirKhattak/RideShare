@@ -2898,6 +2898,8 @@ function Dashboard({
     const pendingBooking = activeBookings.find(b => b.status === 'pending' && !dismissedBookingIds[b.id]);
 
     if (pendingBooking) {
+      if (pendingBooking.origin) setSelfOrigin(pendingBooking.origin);
+      if (pendingBooking.destination) setSelfDestination(pendingBooking.destination);
       if (pendingBooking.source === 'live_active_mode' || pendingBooking.mode === 'active') {
         setDashboardMode('active');
       } else {
@@ -2917,6 +2919,8 @@ function Dashboard({
     });
 
     if (confirmedBooking) {
+      if (confirmedBooking.origin) setSelfOrigin(confirmedBooking.origin);
+      if (confirmedBooking.destination) setSelfDestination(confirmedBooking.destination);
       if (confirmedBooking.source === 'live_active_mode' || confirmedBooking.mode === 'active') {
         setDashboardMode('active');
       } else {

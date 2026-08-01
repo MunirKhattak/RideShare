@@ -354,7 +354,8 @@ export default function LiveActivePassengerMap({
           (targetRideId && (t as any).rideId === targetRideId)
         );
         if (match) {
-          setSelectedPassenger(match);
+          if (match.origin && setSelfOrigin) setSelfOrigin(match.origin);
+          if (match.destination && setSelfDestination) setSelfDestination(match.destination);
           if (leafletMapInstanceRef.current) {
             leafletMapInstanceRef.current.setView([match.lat, match.lng], 14);
           }
@@ -386,24 +387,10 @@ export default function LiveActivePassengerMap({
           }
 
           if (bookingData) {
+            if (bookingData.origin && setSelfOrigin) setSelfOrigin(bookingData.origin);
+            if (bookingData.destination && setSelfDestination) setSelfDestination(bookingData.destination);
             const origKey = (bookingData.origin || '').toLowerCase().trim();
             const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
-            const p: PassengerProfile = {
-              id: bookingIdFound,
-              name: bookingData.driverName || bookingData.passengerName || 'Ride Member',
-              avatar: bookingData.driverPhoto || bookingData.passengerPhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-              phone: bookingData.driverWhatsapp || bookingData.passengerWhatsapp || '',
-              whatsapp: bookingData.driverWhatsapp || bookingData.passengerWhatsapp || '',
-              origin: bookingData.origin || 'Location',
-              destination: bookingData.destination || 'Destination',
-              rating: 4.9,
-              trips: 12,
-              lat: baseCoords.lat,
-              lng: baseCoords.lng,
-              vehicleType: bookingData.type === 'ride_offer' ? 'Car' : 'Passenger',
-              role: 'driver'
-            };
-            setSelectedPassenger(p);
             if (leafletMapInstanceRef.current) {
               leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
             }
@@ -427,24 +414,10 @@ export default function LiveActivePassengerMap({
           }
 
           if (rideData) {
+            if (rideData.origin && setSelfOrigin) setSelfOrigin(rideData.origin);
+            if (rideData.destination && setSelfDestination) setSelfDestination(rideData.destination);
             const origKey = (rideData.origin || '').toLowerCase().trim();
             const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
-            const p: PassengerProfile = {
-              id: targetRideId,
-              name: rideData.driverName || 'Driver',
-              avatar: rideData.driverAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-              phone: rideData.whatsapp || rideData.phone || '',
-              whatsapp: rideData.whatsapp || rideData.phone || '',
-              origin: rideData.origin || 'Location',
-              destination: rideData.destination || 'Destination',
-              rating: rideData.rating || 4.9,
-              trips: rideData.trips || 10,
-              lat: baseCoords.lat,
-              lng: baseCoords.lng,
-              vehicleType: rideData.vehicleType === 'Bike' ? 'Bike' : 'Car',
-              role: 'driver'
-            };
-            setSelectedPassenger(p);
             if (leafletMapInstanceRef.current) {
               leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
             }
@@ -464,24 +437,12 @@ export default function LiveActivePassengerMap({
           const userSnap = await getDoc(doc(db, 'users', targetTrackUid));
           if (userSnap.exists()) {
             const u = userSnap.data();
-            const p: PassengerProfile = {
-              id: userSnap.id,
-              name: u.displayName || u.name || 'Active Member',
-              avatar: u.photoURL || u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-              phone: u.whatsappNumber || u.phoneNumber || '',
-              whatsapp: u.whatsappNumber || u.phoneNumber || '',
-              origin: 'Location',
-              destination: 'Destination',
-              rating: 5.0,
-              trips: 1,
-              lat: 33.6844,
-              lng: 73.0479,
-              vehicleType: u.role === 'driver' ? 'Car' : 'Passenger',
-              role: u.role === 'driver' ? 'driver' : 'passenger'
-            };
-            setSelectedPassenger(p);
+            if (u.origin && setSelfOrigin) setSelfOrigin(u.origin);
+            if (u.destination && setSelfDestination) setSelfDestination(u.destination);
+            const origKey = (u.origin || '').toLowerCase().trim();
+            const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
             if (leafletMapInstanceRef.current) {
-              leafletMapInstanceRef.current.setView([p.lat, p.lng], 14);
+              leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
             }
           }
         } catch (err) {
@@ -742,10 +703,6 @@ export default function LiveActivePassengerMap({
           const senderId = msg.senderId;
 
           if (senderId && senderId !== myUid) {
-            const targetPassenger = activeTargets.find(p => p.id === senderId);
-            if (targetPassenger) {
-              setSelectedPassenger(targetPassenger);
-            }
             setShowChat(senderId);
 
             toast.info(`💬 Naya Peghaam: ${msg.text.slice(0, 45)}`, {
@@ -803,20 +760,12 @@ export default function LiveActivePassengerMap({
                 onClick: () => handleAcceptBookingRequest(notif.bookingId, notif.senderId)
               }
             });
-            if (notif.senderId) {
-              const p = activeTargets.find(t => t.id === notif.senderId);
-              if (p) setSelectedPassenger(p);
-            }
           } else if (notif.type === 'booking_confirmed') {
             toast.success(`🎉 ${notif.title}`, {
               description: notif.body,
               duration: 12000
             });
             setBookingConfirmed(true);
-            if (notif.senderId) {
-              const p = activeTargets.find(t => t.id === notif.senderId);
-              if (p) setSelectedPassenger(p);
-            }
           }
         }
       });
