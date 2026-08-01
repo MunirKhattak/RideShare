@@ -123,6 +123,12 @@ export default function LiveActivePassengerMap({
   const activeMsgNotifiedRef = useRef<Set<string>>(new Set());
   const activeNotifNotifiedRef = useRef<Set<string>>(new Set());
 
+  // Dynamically initialize driverCoords based on selfOrigin city or Islamabad default
+  const getInitialCoords = () => {
+    const key = (selfOrigin || '').toLowerCase().trim();
+    return CITY_COORDS[key] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+  };
+
   // Helper to extract initial tracked target from URL search params
   const getInitialTrackedTarget = () => {
     if (typeof window === 'undefined') return null;
