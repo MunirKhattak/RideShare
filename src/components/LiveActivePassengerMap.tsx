@@ -389,6 +389,9 @@ export default function LiveActivePassengerMap({
         if (match) {
           if (match.origin && setSelfOrigin) setSelfOrigin(match.origin);
           if (match.destination && setSelfDestination) setSelfDestination(match.destination);
+          if (match.vehicleType && setSelfVehicleType) {
+            setSelfVehicleType(match.vehicleType === 'Bike' ? 'Bike' : 'Car');
+          }
           trackedTargetIdRef.current = match.id;
           trackedTargetUidsRef.current.add(match.id);
           trackedTargetCoordsRef.current = { lat: match.lat, lng: match.lng };
@@ -421,6 +424,11 @@ export default function LiveActivePassengerMap({
             if (bookingData.origin && setSelfOrigin) setSelfOrigin(bookingData.origin);
             if (bookingData.destination && setSelfDestination) setSelfDestination(bookingData.destination);
 
+            const bVeh = bookingData.vehicleType || bookingData.vehicle || bookingData.driverVehicleType;
+            if (bVeh && setSelfVehicleType) {
+              setSelfVehicleType(bVeh === 'Bike' || bVeh === 'Motorcycle' ? 'Bike' : 'Car');
+            }
+
             const candidateUids = [
               bookingData.driverId,
               bookingData.passengerId,
@@ -438,6 +446,9 @@ export default function LiveActivePassengerMap({
                 const locSnap = await getDoc(doc(db, 'activeLocations', candidateUid));
                 if (locSnap.exists()) {
                   const locData = locSnap.data();
+                  if (locData.vehicleType && setSelfVehicleType) {
+                    setSelfVehicleType(locData.vehicleType === 'Bike' ? 'Bike' : 'Car');
+                  }
                   if (locData.lat && locData.lng) {
                     trackedTargetIdRef.current = candidateUid;
                     trackedTargetCoordsRef.current = { lat: locData.lat, lng: locData.lng };
@@ -446,6 +457,14 @@ export default function LiveActivePassengerMap({
                     }
                     foundLiveLoc = true;
                     break;
+                  }
+                } else {
+                  const uSnap = await getDoc(doc(db, 'users', candidateUid));
+                  if (uSnap.exists()) {
+                    const uData = uSnap.data();
+                    if (uData.vehicleType && setSelfVehicleType) {
+                      setSelfVehicleType(uData.vehicleType === 'Bike' ? 'Bike' : 'Car');
+                    }
                   }
                 }
               } catch (e) {}
@@ -482,6 +501,11 @@ export default function LiveActivePassengerMap({
             if (rideData.origin && setSelfOrigin) setSelfOrigin(rideData.origin);
             if (rideData.destination && setSelfDestination) setSelfDestination(rideData.destination);
 
+            const rVeh = rideData.vehicleType || rideData.vehicle;
+            if (rVeh && setSelfVehicleType) {
+              setSelfVehicleType(rVeh === 'Bike' || rVeh === 'Motorcycle' ? 'Bike' : 'Car');
+            }
+
             const candidateUids = [rideData.driverId, rideData.passengerId, rideData.userId].filter(Boolean);
             candidateUids.forEach(uid => trackedTargetUidsRef.current.add(uid));
 
@@ -492,6 +516,9 @@ export default function LiveActivePassengerMap({
                 const locSnap = await getDoc(doc(db, 'activeLocations', candidateUid));
                 if (locSnap.exists()) {
                   const locData = locSnap.data();
+                  if (locData.vehicleType && setSelfVehicleType) {
+                    setSelfVehicleType(locData.vehicleType === 'Bike' ? 'Bike' : 'Car');
+                  }
                   if (locData.lat && locData.lng) {
                     trackedTargetIdRef.current = candidateUid;
                     trackedTargetCoordsRef.current = { lat: locData.lat, lng: locData.lng };
@@ -500,6 +527,14 @@ export default function LiveActivePassengerMap({
                     }
                     foundLiveLoc = true;
                     break;
+                  }
+                } else {
+                  const uSnap = await getDoc(doc(db, 'users', candidateUid));
+                  if (uSnap.exists()) {
+                    const uData = uSnap.data();
+                    if (uData.vehicleType && setSelfVehicleType) {
+                      setSelfVehicleType(uData.vehicleType === 'Bike' ? 'Bike' : 'Car');
+                    }
                   }
                 }
               } catch (e) {}
@@ -529,6 +564,9 @@ export default function LiveActivePassengerMap({
           const locSnap = await getDoc(doc(db, 'activeLocations', targetTrackUid));
           if (locSnap.exists() && locSnap.data().lat && locSnap.data().lng) {
             const locData = locSnap.data();
+            if (locData.vehicleType && setSelfVehicleType) {
+              setSelfVehicleType(locData.vehicleType === 'Bike' ? 'Bike' : 'Car');
+            }
             trackedTargetCoordsRef.current = { lat: locData.lat, lng: locData.lng };
             if (leafletMapInstanceRef.current) {
               leafletMapInstanceRef.current.setView([locData.lat, locData.lng], 14);
@@ -539,6 +577,9 @@ export default function LiveActivePassengerMap({
               const u = userSnap.data();
               if (u.origin && setSelfOrigin) setSelfOrigin(u.origin);
               if (u.destination && setSelfDestination) setSelfDestination(u.destination);
+              if (u.vehicleType && setSelfVehicleType) {
+                setSelfVehicleType(u.vehicleType === 'Bike' ? 'Bike' : 'Car');
+              }
               const origKey = (u.origin || '').toLowerCase().trim();
               const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
               if (leafletMapInstanceRef.current && !trackedTargetCoordsRef.current) {
@@ -975,6 +1016,8 @@ export default function LiveActivePassengerMap({
         date: new Date().toISOString().split('T')[0],
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         seats: 1,
+        vehicleType: selectedPassenger?.vehicleType || driverProfile?.vehicleType || (selfVehicleType !== 'All' ? selfVehicleType : 'Car'),
+        vehicle: selectedPassenger?.vehicleType || driverProfile?.vehicleType || (selfVehicleType !== 'All' ? selfVehicleType : 'Car'),
         status: 'pending',
         participants: [drivId, passId],
         createdAt: serverTimestamp(),
@@ -1167,7 +1210,20 @@ export default function LiveActivePassengerMap({
                    <span className="bg-emerald-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded animate-pulse">LIVE</span>
                    <span>Role: <span className="font-extrabold text-white">{userRole === 'driver' ? 'Driver' : 'Passenger'}</span></span>
                    <span className="text-blue-300 font-bold">•</span>
-                   <span>Gari: <span className="font-extrabold text-white">{selfVehicleType === 'All' ? '🚗 Car / 🏍️ Bike' : selfVehicleType === 'Car' ? '🚗 Car' : '🏍️ Bike'}</span></span>
+                   {(() => {
+                     const trackedMatch = activeTargets.find(t => 
+                       (trackedTargetIdRef.current && t.id === trackedTargetIdRef.current) || 
+                       trackedTargetUidsRef.current.has(t.id) || 
+                       (trackedTargetIdRef.current && (t as any).rideId === trackedTargetIdRef.current)
+                     );
+                     const activeVehicleDisplay = selfVehicleType !== 'All' 
+                       ? selfVehicleType 
+                       : (trackedMatch?.vehicleType || driverProfile?.vehicleType || 'All');
+
+                     return (
+                       <span>Gari: <span className="font-extrabold text-white">{activeVehicleDisplay === 'All' ? '🚗 Car / 🏍️ Bike' : activeVehicleDisplay === 'Car' ? '🚗 Car' : '🏍️ Bike'}</span></span>
+                     );
+                   })()}
                  </div>
                </div>
              ) : (

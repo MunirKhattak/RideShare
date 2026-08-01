@@ -1167,6 +1167,8 @@ export default function App() {
         passengerName: isRideOffer ? profile.displayName : (ride as RideRequest).passengerName,
         driverName: isRideOffer ? (ride as Ride).driverName : profile.displayName,
         seats,
+        vehicleType: (ride as any).vehicleType || (ride as any).vehicle || profile?.vehicleType || 'Car',
+        vehicle: (ride as any).vehicleType || (ride as any).vehicle || profile?.vehicleType || 'Car',
         status: 'pending',
         type: isRideOffer ? 'ride_booking' : 'request_booking',
         participants: [isRideOffer ? (ride as Ride).driverId : user.uid, isRideOffer ? user.uid : (ride as RideRequest).passengerId],
@@ -2900,6 +2902,8 @@ function Dashboard({
     if (pendingBooking) {
       if (pendingBooking.origin) setSelfOrigin(pendingBooking.origin);
       if (pendingBooking.destination) setSelfDestination(pendingBooking.destination);
+      const pbVeh = (pendingBooking as any).vehicleType || (pendingBooking as any).vehicle;
+      if (pbVeh) setSelfVehicleType(pbVeh === 'Bike' || pbVeh === 'Motorcycle' ? 'Bike' : 'Car');
       if (pendingBooking.source === 'live_active_mode' || pendingBooking.mode === 'active') {
         setDashboardMode('active');
       } else {
@@ -2921,6 +2925,8 @@ function Dashboard({
     if (confirmedBooking) {
       if (confirmedBooking.origin) setSelfOrigin(confirmedBooking.origin);
       if (confirmedBooking.destination) setSelfDestination(confirmedBooking.destination);
+      const cbVeh = (confirmedBooking as any).vehicleType || (confirmedBooking as any).vehicle;
+      if (cbVeh) setSelfVehicleType(cbVeh === 'Bike' || cbVeh === 'Motorcycle' ? 'Bike' : 'Car');
       if (confirmedBooking.source === 'live_active_mode' || confirmedBooking.mode === 'active') {
         setDashboardMode('active');
       } else {
