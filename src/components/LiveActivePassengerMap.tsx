@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, auth } from '../firebase';
-import { collection, doc, setDoc, updateDoc, onSnapshot, query, where, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, onSnapshot, query, where, addDoc, serverTimestamp, getDoc, getDocs, limit } from 'firebase/firestore';
 
 interface PassengerProfile {
   id: string;
@@ -344,78 +344,157 @@ export default function LiveActivePassengerMap({
 
     if (!targetRideId && !targetTrackUid) return;
 
-    // Check if matching target already in activeTargets
-    if (activeTargets.length > 0) {
-      const match = activeTargets.find(t => 
-        t.id === targetRideId || 
-        t.id === targetTrackUid || 
-        (targetTrackUid && t.phone && t.phone.includes(targetTrackUid))
-      );
-      if (match) {
-        setSelectedPassenger(match);
-        if (leafletMapInstanceRef.current) {
-          leafletMapInstanceRef.current.setView([match.lat, match.lng], 14);
-        }
-        return;
-      }
-    }
-
-    // Direct Firestore fetch for shared ride/booking ID if not found in activeTargets list
-    if (targetRideId) {
-      getDoc(doc(db, 'bookings', targetRideId)).then(bookingSnap => {
-        if (bookingSnap.exists()) {
-          const b = bookingSnap.data();
-          const origKey = (b.origin || '').toLowerCase().trim();
-          const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
-          const p: PassengerProfile = {
-            id: bookingSnap.id,
-            name: b.driverName || b.passengerName || 'Ride Member',
-            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-            phone: b.driverWhatsapp || b.passengerWhatsapp || '',
-            whatsapp: b.driverWhatsapp || b.passengerWhatsapp || '',
-            origin: b.origin || 'Location',
-            destination: b.destination || 'Destination',
-            rating: 4.9,
-            trips: 12,
-            lat: baseCoords.lat,
-            lng: baseCoords.lng,
-            vehicleType: 'Car',
-            role: 'driver'
-          };
-          setSelectedPassenger(p);
+    const processDeepLink = async () => {
+      // 1. Check if matching target already in activeTargets
+      if (activeTargets.length > 0) {
+        const match = activeTargets.find(t => 
+          t.id === targetRideId || 
+          t.id === targetTrackUid || 
+          (targetTrackUid && t.phone && t.phone.includes(targetTrackUid)) ||
+          (targetRideId && (t as any).rideId === targetRideId)
+        );
+        if (match) {
+          setSelectedPassenger(match);
           if (leafletMapInstanceRef.current) {
-            leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+            leafletMapInstanceRef.current.setView([match.lat, match.lng], 14);
           }
-        } else {
-          getDoc(doc(db, 'rides', targetRideId)).then(rideSnap => {
-            if (rideSnap.exists()) {
-              const r = rideSnap.data();
-              const origKey = (r.origin || '').toLowerCase().trim();
-              const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
-              const p: PassengerProfile = {
-                id: rideSnap.id,
-                name: r.driverName || 'Driver',
-                avatar: r.driverAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-                phone: r.whatsapp || r.phone || '',
-                whatsapp: r.whatsapp || r.phone || '',
-                origin: r.origin || 'Location',
-                destination: r.destination || 'Destination',
-                rating: r.rating || 4.9,
-                trips: r.trips || 10,
-                lat: baseCoords.lat,
-                lng: baseCoords.lng,
-                vehicleType: r.vehicleType === 'Bike' ? 'Bike' : 'Car',
-                role: 'driver'
-              };
-              setSelectedPassenger(p);
-              if (leafletMapInstanceRef.current) {
-                leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
-              }
-            }
-          });
+          if (window.location.search) {
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+          return;
         }
-      }).catch(err => console.warn("Failed to fetch deep link booking:", err));
-    }
+      }
+
+      // 2. Direct Firestore fetch for shared ride/booking ID if not found in activeTargets list
+      if (targetRideId) {
+        try {
+          let bookingData: any = null;
+          let bookingIdFound = targetRideId;
+
+          const bookingSnap = await getDoc(doc(db, 'bookings', targetRideId));
+          if (bookingSnap.exists()) {
+            bookingData = bookingSnap.data();
+            bookingIdFound = bookingSnap.id;
+          } else {
+            const q = query(collection(db, 'bookings'), where('rideId', '==', targetRideId), limit(1));
+            const querySnap = await getDocs(q);
+            if (!querySnap.empty) {
+              const d = querySnap.docs[0];
+              bookingData = d.data();
+              bookingIdFound = d.id;
+            }
+          }
+
+          if (bookingData) {
+            const origKey = (bookingData.origin || '').toLowerCase().trim();
+            const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+            const p: PassengerProfile = {
+              id: bookingIdFound,
+              name: bookingData.driverName || bookingData.passengerName || 'Ride Member',
+              avatar: bookingData.driverPhoto || bookingData.passengerPhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+              phone: bookingData.driverWhatsapp || bookingData.passengerWhatsapp || '',
+              whatsapp: bookingData.driverWhatsapp || bookingData.passengerWhatsapp || '',
+              origin: bookingData.origin || 'Location',
+              destination: bookingData.destination || 'Destination',
+              rating: 4.9,
+              trips: 12,
+              lat: baseCoords.lat,
+              lng: baseCoords.lng,
+              vehicleType: bookingData.type === 'ride_offer' ? 'Car' : 'Passenger',
+              role: 'driver'
+            };
+            setSelectedPassenger(p);
+            if (leafletMapInstanceRef.current) {
+              leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+            }
+            if (window.location.search) {
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+            return;
+          }
+
+          // Fallback to rides collection
+          const rideSnap = await getDoc(doc(db, 'rides', targetRideId));
+          let rideData: any = null;
+          if (rideSnap.exists()) {
+            rideData = rideSnap.data();
+          } else {
+            const rq = query(collection(db, 'rides'), where('rideId', '==', targetRideId), limit(1));
+            const rQuerySnap = await getDocs(rq);
+            if (!rQuerySnap.empty) {
+              rideData = rQuerySnap.docs[0].data();
+            }
+          }
+
+          if (rideData) {
+            const origKey = (rideData.origin || '').toLowerCase().trim();
+            const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+            const p: PassengerProfile = {
+              id: targetRideId,
+              name: rideData.driverName || 'Driver',
+              avatar: rideData.driverAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+              phone: rideData.whatsapp || rideData.phone || '',
+              whatsapp: rideData.whatsapp || rideData.phone || '',
+              origin: rideData.origin || 'Location',
+              destination: rideData.destination || 'Destination',
+              rating: rideData.rating || 4.9,
+              trips: rideData.trips || 10,
+              lat: baseCoords.lat,
+              lng: baseCoords.lng,
+              vehicleType: rideData.vehicleType === 'Bike' ? 'Bike' : 'Car',
+              role: 'driver'
+            };
+            setSelectedPassenger(p);
+            if (leafletMapInstanceRef.current) {
+              leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+            }
+            if (window.location.search) {
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+            return;
+          }
+        } catch (err) {
+          console.warn("Failed to fetch deep link booking:", err);
+        }
+      }
+
+      // 3. Direct Firestore lookup for targetTrackUid
+      if (targetTrackUid) {
+        try {
+          const userSnap = await getDoc(doc(db, 'users', targetTrackUid));
+          if (userSnap.exists()) {
+            const u = userSnap.data();
+            const p: PassengerProfile = {
+              id: userSnap.id,
+              name: u.displayName || u.name || 'Active Member',
+              avatar: u.photoURL || u.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+              phone: u.whatsappNumber || u.phoneNumber || '',
+              whatsapp: u.whatsappNumber || u.phoneNumber || '',
+              origin: 'Location',
+              destination: 'Destination',
+              rating: 5.0,
+              trips: 1,
+              lat: 33.6844,
+              lng: 73.0479,
+              vehicleType: u.role === 'driver' ? 'Car' : 'Passenger',
+              role: u.role === 'driver' ? 'driver' : 'passenger'
+            };
+            setSelectedPassenger(p);
+            if (leafletMapInstanceRef.current) {
+              leafletMapInstanceRef.current.setView([p.lat, p.lng], 14);
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to fetch user by targetTrackUid:", err);
+        }
+      }
+
+      if (window.location.search) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    };
+
+    processDeepLink();
   }, [activeTargets]);
 
   // Dynamically Load Leaflet Assets from CDN

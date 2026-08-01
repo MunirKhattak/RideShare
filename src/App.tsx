@@ -398,10 +398,6 @@ export default function App() {
     } else if (urlView && urlView !== 'dashboard' && urlView !== 'main') {
       setViewState(urlView as any);
     }
-
-    if (window.location.search && (rideId || activeLiveTrack || urlView)) {
-      window.history.replaceState({}, '', window.location.pathname);
-    }
   }, [user]);
 
   useEffect(() => {
@@ -2840,11 +2836,7 @@ function Dashboard({
     const urlView = params.get('view');
     const rideId = (params.get('ride') || params.get('track') || params.get('bookingId'))?.trim();
     const activeLiveTrack = params.get('activeLiveTrack')?.trim();
-    const isMapUrl = Boolean((rideId && rideId.length > 0) || (activeLiveTrack && activeLiveTrack.length > 0) || urlView === 'map' || urlView === 'live_map');
-    if (isMapUrl && window.location.search) {
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-    return isMapUrl;
+    return Boolean((rideId && rideId.length > 0) || (activeLiveTrack && activeLiveTrack.length > 0) || urlView === 'map' || urlView === 'live_map');
   });
 
   useEffect(() => {
@@ -2855,9 +2847,6 @@ function Dashboard({
     if ((rideId && rideId.length > 0) || (activeLiveTrack && activeLiveTrack.length > 0) || urlView === 'map' || urlView === 'live_map') {
       setShowLiveMap(true);
       setDashboardMode('active');
-      if (window.location.search) {
-        window.history.replaceState({}, '', window.location.pathname);
-      }
     }
   }, []);
 

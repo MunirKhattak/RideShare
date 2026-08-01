@@ -131,10 +131,6 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
     } else {
       setView('main');
     }
-
-    if (window.location.search) {
-      window.history.replaceState({}, '', window.location.pathname);
-    }
   };
 
   const handleSecretSubmit = (e: React.FormEvent) => {
@@ -255,7 +251,7 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
         localStorage.setItem('easytravel_mock_profile', JSON.stringify(newProfile));
         setProfile(newProfile);
         toast.success(`Registration mukammal ho gayi! ID: ${customId}`);
-        setView('main');
+        navigateTargetView();
       } else {
         try {
           const finalProfile = {
@@ -265,14 +261,14 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
           await setDoc(doc(db, 'users', user.uid), finalProfile);
           setProfile(newProfile);
           toast.success(`Registration mukammal ho gayi! ID: ${customId}`);
-          setView('main');
+          navigateTargetView();
         } catch (dbErr) {
           console.warn("Could not save profile to Firestore, saving locally as backup:", dbErr);
           localStorage.setItem(`easytravel_mock_profile_${user.uid}`, JSON.stringify(newProfile));
           localStorage.setItem('easytravel_mock_profile', JSON.stringify(newProfile));
           setProfile(newProfile);
           toast.success(`Registration locally save ho gayi! ID: ${customId}`);
-          setView('main');
+          navigateTargetView();
         }
       }
     } catch (error) {
