@@ -131,6 +131,10 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
     } else {
       setView('main');
     }
+
+    if (window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   };
 
   const handleSecretSubmit = (e: React.FormEvent) => {

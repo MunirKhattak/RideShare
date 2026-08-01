@@ -398,6 +398,10 @@ export default function App() {
     } else if (urlView && urlView !== 'dashboard' && urlView !== 'main') {
       setViewState(urlView as any);
     }
+
+    if (window.location.search && (rideId || activeLiveTrack || urlView)) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -2836,7 +2840,11 @@ function Dashboard({
     const urlView = params.get('view');
     const rideId = (params.get('ride') || params.get('track') || params.get('bookingId'))?.trim();
     const activeLiveTrack = params.get('activeLiveTrack')?.trim();
-    return Boolean((rideId && rideId.length > 0) || (activeLiveTrack && activeLiveTrack.length > 0) || urlView === 'map' || urlView === 'live_map');
+    const isMapUrl = Boolean((rideId && rideId.length > 0) || (activeLiveTrack && activeLiveTrack.length > 0) || urlView === 'map' || urlView === 'live_map');
+    if (isMapUrl && window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    return isMapUrl;
   });
 
   useEffect(() => {
@@ -2847,6 +2855,9 @@ function Dashboard({
     if ((rideId && rideId.length > 0) || (activeLiveTrack && activeLiveTrack.length > 0) || urlView === 'map' || urlView === 'live_map') {
       setShowLiveMap(true);
       setDashboardMode('active');
+      if (window.location.search) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     }
   }, []);
 
@@ -4733,7 +4744,12 @@ function DetailedProfileView({
                 <Edit className="w-5 h-5" /> Edit Profile
               </Button>
               <Button variant="outline" className="w-full gap-2 py-6 text-lg border-2 border-red-100 text-red-600 rounded-2xl hover:bg-red-50 font-bold" onClick={() => {
-                logout().then(() => setView('main'));
+                logout().then(() => {
+                  if (window.location.search) {
+                    window.history.replaceState({}, '', window.location.pathname);
+                  }
+                  setView('main');
+                });
               }}>
                 <LogOut className="w-5 h-5" /> Log out
               </Button>
