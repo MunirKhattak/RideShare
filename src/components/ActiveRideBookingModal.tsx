@@ -358,6 +358,16 @@ export const ActiveRideBookingModal: React.FC<ActiveRideBookingModalProps> = ({
             </div>
           )}
 
+          {/* General Close / Dismiss Button */}
+          <div className="pt-2 border-t border-slate-100">
+            <Button
+              onClick={onClose}
+              variant="ghost"
+              className="w-full h-11 text-slate-500 font-bold hover:text-slate-800 hover:bg-slate-100 rounded-xl flex items-center justify-center gap-1.5"
+            >
+              <X className="w-4 h-4" /> Window Band Karein
+            </Button>
+          </div>
         </div>
       </motion.div>
     </div>
