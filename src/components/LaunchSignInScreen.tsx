@@ -115,6 +115,24 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
     }
   };
 
+  const navigateTargetView = () => {
+    const params = new URLSearchParams(window.location.search);
+    const urlView = params.get('view');
+    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
+    const activeLiveTrack = params.get('activeLiveTrack');
+    const path = window.location.pathname.toLowerCase();
+
+    if (urlView === 'privacy' || urlView === 'privacy_policy' || path.includes('/privacy')) {
+      setView('privacy_policy');
+    } else if (urlView === 'dashboard' || urlView === 'map' || urlView === 'live_map' || rideId || activeLiveTrack) {
+      setView('dashboard');
+    } else if (urlView) {
+      setView(urlView as any);
+    } else {
+      setView('main');
+    }
+  };
+
   const handleSecretSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (secretCode === 'EASY2026' || secretCode === '7896') {
@@ -142,7 +160,7 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
         setUser(reviewerUser);
       }
       setProfile(reviewerProfile);
-      setView('main');
+      navigateTargetView();
       toast.success("Reviewer Test Account se login ho gaye!");
     } else {
       toast.error("Ghalat secret code!");
@@ -159,8 +177,8 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
       });
       setStep(2);
     } else if (user && profile) {
-      // Completed, go to main landing page
-      setView('main');
+      // Completed, go to target page or main landing page
+      navigateTargetView();
     }
   }, [user, profile, setView]);
 
@@ -176,7 +194,7 @@ export default function LaunchSignInScreen({ user, profile, setUser, setProfile,
           const p = userDoc.data() as UserProfile;
           setProfile(p);
           toast.success(`Khush Amdeed, ${p.displayName}!`);
-          setView('main');
+          navigateTargetView();
         } else {
           // Proceed to profile completion (handled by useEffect)
           setStep(2);

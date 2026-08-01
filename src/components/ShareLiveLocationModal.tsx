@@ -53,8 +53,7 @@ export const ShareLiveLocationModal: React.FC<ShareLiveLocationModalProps> = ({
       try {
         await navigator.share({
           title: `EasyTravel Live Ride: ${origin} to ${destination}`,
-          text: shareText,
-          url: shareUrl
+          text: shareText
         });
         toast.success("Live location kamyabi se share ho gayi!");
         return;

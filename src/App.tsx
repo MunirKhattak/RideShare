@@ -148,7 +148,22 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   
-  const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint' | 'privacy_policy'>('main');
+  const [view, setViewState] = useState<'main' | 'register' | 'dashboard' | 'search' | 'post' | 'edit_post' | 'profile_view' | 'chat' | 'messages' | 'my_rides' | 'my_requests' | 'edit_profile' | 'admin_dashboard' | 'complaint' | 'privacy_policy'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlView = params.get('view');
+    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
+    const activeLiveTrack = params.get('activeLiveTrack');
+    const path = window.location.pathname.toLowerCase();
+
+    if (urlView === 'privacy' || urlView === 'privacy_policy' || urlView === 'privacy-policy' || path.includes('/privacy')) {
+      return 'privacy_policy';
+    } else if (urlView === 'dashboard' || urlView === 'map' || urlView === 'live_map' || rideId || activeLiveTrack) {
+      return 'dashboard';
+    } else if (urlView) {
+      return urlView as any;
+    }
+    return 'main';
+  });
   const [travelScope, setTravelScopeState] = useState<'intercity' | 'intracity' | null>(null);
   const travelScopeRef = useRef<'intercity' | 'intracity' | null>(null);
   const viewRef = useRef(view);
@@ -372,11 +387,13 @@ export default function App() {
     // Handle deep links and static URL routing
     const params = new URLSearchParams(window.location.search);
     const urlView = params.get('view');
+    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
+    const activeLiveTrack = params.get('activeLiveTrack');
     const path = window.location.pathname.toLowerCase();
 
     if (urlView === 'privacy' || urlView === 'privacy_policy' || urlView === 'privacy-policy' || path.includes('/privacy')) {
       setViewState('privacy_policy');
-    } else if (urlView === 'dashboard') {
+    } else if (urlView === 'dashboard' || urlView === 'map' || urlView === 'live_map' || rideId || activeLiveTrack) {
       setViewState('dashboard');
     } else if (urlView) {
       setViewState(urlView as any);
@@ -2806,10 +2823,32 @@ function Dashboard({
   onShowAd?: () => void
 }) {
   const userRole = profile?.role || 'passenger';
-  const [dashboardMode, setDashboardMode] = useState<'advance' | 'active'>('advance');
+  const [dashboardMode, setDashboardMode] = useState<'advance' | 'active'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
+    const activeLiveTrack = params.get('activeLiveTrack');
+    return (rideId || activeLiveTrack) ? 'active' : 'advance';
+  });
   const [activeRidesList, setActiveRidesList] = useState<any[]>([]);
   const [activeRequestsList, setActiveRequestsList] = useState<any[]>([]);
-  const [showLiveMap, setShowLiveMap] = useState(false);
+  const [showLiveMap, setShowLiveMap] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlView = params.get('view');
+    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
+    const activeLiveTrack = params.get('activeLiveTrack');
+    return Boolean(rideId || activeLiveTrack || urlView === 'map' || urlView === 'live_map');
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const rideId = params.get('ride') || params.get('track') || params.get('bookingId');
+    const activeLiveTrack = params.get('activeLiveTrack');
+    const urlView = params.get('view');
+    if (rideId || activeLiveTrack || urlView === 'map' || urlView === 'live_map') {
+      setShowLiveMap(true);
+      setDashboardMode('active');
+    }
+  }, []);
 
   const openLiveMap = () => {
     window.history.pushState({ liveMap: true, view: 'dashboard', travelScope }, '', '');

@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, auth } from '../firebase';
-import { collection, doc, setDoc, updateDoc, onSnapshot, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, onSnapshot, query, where, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 
 interface PassengerProfile {
   id: string;
@@ -335,6 +335,88 @@ export default function LiveActivePassengerMap({
       unsubRides();
     };
   }, [autoActive, userRole, currentUid]);
+
+  // Deep link tracking effect for shared location links (?ride=... or ?track=... or ?activeLiveTrack=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const targetRideId = params.get('ride') || params.get('track') || params.get('bookingId');
+    const targetTrackUid = params.get('activeLiveTrack');
+
+    if (!targetRideId && !targetTrackUid) return;
+
+    // Check if matching target already in activeTargets
+    if (activeTargets.length > 0) {
+      const match = activeTargets.find(t => 
+        t.id === targetRideId || 
+        t.id === targetTrackUid || 
+        (targetTrackUid && t.phone && t.phone.includes(targetTrackUid))
+      );
+      if (match) {
+        setSelectedPassenger(match);
+        if (leafletMapInstanceRef.current) {
+          leafletMapInstanceRef.current.setView([match.lat, match.lng], 14);
+        }
+        return;
+      }
+    }
+
+    // Direct Firestore fetch for shared ride/booking ID if not found in activeTargets list
+    if (targetRideId) {
+      getDoc(doc(db, 'bookings', targetRideId)).then(bookingSnap => {
+        if (bookingSnap.exists()) {
+          const b = bookingSnap.data();
+          const origKey = (b.origin || '').toLowerCase().trim();
+          const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+          const p: PassengerProfile = {
+            id: bookingSnap.id,
+            name: b.driverName || b.passengerName || 'Ride Member',
+            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+            phone: b.driverWhatsapp || b.passengerWhatsapp || '',
+            whatsapp: b.driverWhatsapp || b.passengerWhatsapp || '',
+            origin: b.origin || 'Location',
+            destination: b.destination || 'Destination',
+            rating: 4.9,
+            trips: 12,
+            lat: baseCoords.lat,
+            lng: baseCoords.lng,
+            vehicleType: 'Car',
+            role: 'driver'
+          };
+          setSelectedPassenger(p);
+          if (leafletMapInstanceRef.current) {
+            leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+          }
+        } else {
+          getDoc(doc(db, 'rides', targetRideId)).then(rideSnap => {
+            if (rideSnap.exists()) {
+              const r = rideSnap.data();
+              const origKey = (r.origin || '').toLowerCase().trim();
+              const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+              const p: PassengerProfile = {
+                id: rideSnap.id,
+                name: r.driverName || 'Driver',
+                avatar: r.driverAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+                phone: r.whatsapp || r.phone || '',
+                whatsapp: r.whatsapp || r.phone || '',
+                origin: r.origin || 'Location',
+                destination: r.destination || 'Destination',
+                rating: r.rating || 4.9,
+                trips: r.trips || 10,
+                lat: baseCoords.lat,
+                lng: baseCoords.lng,
+                vehicleType: r.vehicleType === 'Bike' ? 'Bike' : 'Car',
+                role: 'driver'
+              };
+              setSelectedPassenger(p);
+              if (leafletMapInstanceRef.current) {
+                leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+              }
+            }
+          });
+        }
+      }).catch(err => console.warn("Failed to fetch deep link booking:", err));
+    }
+  }, [activeTargets]);
 
   // Dynamically Load Leaflet Assets from CDN
   useEffect(() => {
