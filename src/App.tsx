@@ -87,7 +87,6 @@ import { format } from 'date-fns';
 import confetti from 'canvas-confetti';
 import LaunchSignInScreen from './components/LaunchSignInScreen';
 import WalletModal from './components/WalletModal';
-import { ActiveRideBookingModal } from './components/ActiveRideBookingModal';
 
 function Motorcycle({ className = "w-6 h-6", ...props }: React.SVGProps<SVGSVGElement>) {
   return (
@@ -957,16 +956,7 @@ export default function App() {
     // Handle Service Worker notification click events without app reload
     const handleSwMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
-        const notifData = event.data.data || {};
         setView('dashboard');
-        if (notifData.source === 'live_active_mode' || notifData.mode === 'active' || notifData.type === 'booking_request') {
-          setDashboardMode('active');
-        } else if (notifData.mode === 'advance' || notifData.source === 'schedule_mode') {
-          setDashboardMode('advance');
-        }
-        if (notifData.bookingId) {
-          setSelectedBookingForModal(notifData.bookingId);
-        }
       }
     };
 
@@ -1203,7 +1193,7 @@ export default function App() {
     }
   };
 
-  const handleUpdateBookingStatus = async (bookingId: string, status: 'confirmed' | 'cancelled') => {
+  const handleUpdateBookingStatus = async (bookingId: string, status: 'confirmed' | 'cancelled' | 'completed') => {
     try {
       const bookingRef = doc(db, 'bookings', bookingId);
       const bookingSnap = await getDoc(bookingRef);
@@ -1238,7 +1228,9 @@ export default function App() {
             [`rewardStatus.${bookingData.passengerId}`]: rewardStatus
           });
         }
-        toast.success("Booking confirm ho gayi!");
+        toast.success("Booking confirm ho gayi! 🎉");
+      } else if (status === 'completed') {
+        toast.success("Safar mukamal ho gaya! Shukriya. 🎉");
       } else {
         toast.info("Booking cancel kar di gayi.");
       }
@@ -1747,21 +1739,24 @@ function NewBookingCard({
   user, 
   onAction,
   setView,
-  onDismiss
+  onDismiss,
+  onOpenLiveMap
 }: { 
   booking: Booking, 
   user: User | null, 
-  onAction: (id: string, status: 'confirmed' | 'cancelled') => void,
+  onAction: (id: string, status: 'confirmed' | 'cancelled' | 'completed') => void,
   setView: (v: any, item?: any) => void,
-  onDismiss?: (id: string) => void
+  onDismiss?: (id: string) => void,
+  onOpenLiveMap?: () => void
 }) {
   const isDriver = user?.uid === booking.driverId;
   const otherUserName = isDriver ? booking.passengerName : booking.driverName;
   const otherUserWhatsapp = isDriver ? booking.passengerWhatsapp : booking.driverWhatsapp;
   const isLiveActive = booking.source === 'live_active_mode' || booking.mode === 'active';
+  const isSender = booking.senderId ? (user?.uid === booking.senderId) : false;
 
   return (
-    <Card className="border-none shadow-xl overflow-hidden bg-white rounded-3xl border-t-8 border-emerald-500 relative">
+    <Card className="border-none shadow-xl overflow-hidden bg-white rounded-3xl border-t-8 border-emerald-500 relative transition-all">
       {/* Top Right Close Button */}
       {onDismiss && (
         <button 
@@ -1770,104 +1765,159 @@ function NewBookingCard({
             onDismiss(booking.id);
           }}
           className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center transition-all shadow-sm cursor-pointer"
-          title="Close / Hide Card"
+          title="Card Band Karein"
         >
           <X className="w-4 h-4" />
         </button>
       )}
 
-      <CardContent className="p-6">
-        <div className="flex flex-col gap-5">
+      <CardContent className="p-5 sm:p-6">
+        <div className="flex flex-col gap-4">
+          {/* Header Badges & User Info */}
           <div className="flex items-start justify-between pr-8">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <div className="bg-emerald-100 p-3 rounded-2xl shrink-0">
                 <Users className="w-6 h-6 text-emerald-600" />
               </div>
               <div>
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <Badge className="bg-emerald-500/10 text-emerald-600 border-none px-2 py-0 h-5 text-[10px] font-bold uppercase tracking-wider">
-                    New Booking
+                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                  <Badge className="bg-emerald-500/10 text-emerald-600 border-none px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                    {booking.status === 'pending' ? 'Nayi Booking Request' : booking.status === 'confirmed' ? 'Ride Confirmed 🎉' : 'Completed'}
                   </Badge>
-                  <Badge className={isLiveActive ? "bg-emerald-500/15 text-emerald-700 border-none px-2 py-0 h-5 text-[10px] font-extrabold" : "bg-indigo-500/15 text-indigo-700 border-none px-2 py-0 h-5 text-[10px] font-extrabold"}>
+                  <Badge className={isLiveActive ? "bg-emerald-500/15 text-emerald-700 border-none px-2 py-0.5 text-[10px] font-extrabold" : "bg-indigo-500/15 text-indigo-700 border-none px-2 py-0.5 text-[10px] font-extrabold"}>
                     {isLiveActive ? "⚡ Active Mode" : "📅 Schedule Mode"}
                   </Badge>
                 </div>
-                <p className="text-lg font-black text-slate-900 leading-tight">{otherUserName || 'User'}</p>
-                <p className="text-xs font-medium text-slate-500 flex items-center gap-1 mt-1">
-                  <Navigation className="w-3 h-3 text-emerald-600" />
-                  {booking.origin} ➔ {booking.destination}
+                <p className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+                  {otherUserName || 'User'} <span className="text-xs font-normal text-slate-500">({isDriver ? 'Passenger' : 'Driver / Owner'})</span>
+                </p>
+                <p className="text-xs font-semibold text-slate-600 flex items-center gap-1 mt-1">
+                  <Navigation className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="font-bold text-slate-800">{booking.origin}</span> ➔ <span className="font-bold text-slate-800">{booking.destination}</span>
                 </p>
               </div>
             </div>
             <div className="text-right space-y-1 shrink-0">
               <div className="inline-flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg">
                 <Users className="w-3 h-3 text-slate-600" />
-                <span className="text-xs font-black text-slate-900">{booking.seats || 1} Seats</span>
+                <span className="text-xs font-black text-slate-900">{booking.seats || 1} Seat(s)</span>
               </div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{booking.date || 'Aaj'} • {booking.time || 'Abhi'}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Quick Contact Bar */}
+          <div className="grid grid-cols-2 gap-2.5">
             <Button 
               size="sm" 
               variant="outline" 
-              className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-200 gap-2 font-bold transition-all active:scale-95"
+              className="h-11 rounded-xl border-emerald-100 bg-emerald-50/60 text-emerald-700 hover:bg-emerald-100 gap-2 font-bold transition-all active:scale-95"
               onClick={() => {
                 if (otherUserWhatsapp) {
                   window.open(`https://wa.me/${otherUserWhatsapp.replace(/[^0-9]/g, '')}`, '_blank');
+                } else {
+                  toast.info("WhatsApp number dastiyab nahi hai.");
                 }
               }}
             >
-              <MessageCircle className="w-4 h-4" />
+              <MessageCircle className="w-4 h-4 text-emerald-600" />
               WhatsApp
             </Button>
             <Button 
               size="sm" 
               variant="outline" 
-              className="h-12 rounded-2xl border-blue-100 bg-blue-50/50 text-blue-700 hover:bg-blue-100 hover:border-blue-200 gap-2 font-bold transition-all active:scale-95"
+              className="h-11 rounded-xl border-blue-100 bg-blue-50/60 text-blue-700 hover:bg-blue-100 gap-2 font-bold transition-all active:scale-95"
               onClick={() => setView('chat', booking)}
             >
-              <MessageSquare className="w-4 h-4" />
-              Chat
+              <MessageSquare className="w-4 h-4 text-blue-600" />
+              Direct Chat
             </Button>
           </div>
 
-          {booking.status === 'pending' && isDriver && (
-            <div className="flex items-center gap-3 pt-1">
-              <Button 
-                className="flex-1 h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-200 transition-all active:scale-95"
-                onClick={() => onAction(booking.id, 'confirmed')}
-              >
-                Confirm
-              </Button>
-              <Button 
-                variant="ghost" 
-                className="flex-1 h-12 rounded-2xl text-slate-400 font-bold hover:text-rose-600 hover:bg-rose-50 transition-all"
-                onClick={() => onAction(booking.id, 'cancelled')}
-              >
-                Cancel
-              </Button>
+          {/* Pending Status Flow */}
+          {booking.status === 'pending' && (
+            <div className="space-y-3 pt-1 border-t border-slate-100">
+              {isSender ? (
+                <div className="bg-amber-50 border border-amber-200/60 p-3 rounded-2xl text-center space-y-2">
+                  <p className="text-amber-800 font-bold text-xs flex items-center justify-center gap-1.5">
+                    <Clock className="w-4 h-4 text-amber-600 animate-spin shrink-0" />
+                    Aap ki booking request bhej di gayi hai. Doosre user ke confirm karne ka intazaar hai...
+                  </p>
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-10 rounded-xl text-rose-600 border-rose-200 hover:bg-rose-50 font-bold text-xs"
+                    onClick={() => onAction(booking.id, 'cancelled')}
+                  >
+                    Request Cancel Karein
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="bg-emerald-50 border border-emerald-100 p-2.5 rounded-xl text-center">
+                    <p className="text-emerald-800 font-bold text-xs">
+                      Nayi Ride Booking Request! Approve karein ya Cancel karein.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      className="flex-1 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-md shadow-emerald-200 text-sm transition-all active:scale-95"
+                      onClick={() => onAction(booking.id, 'confirmed')}
+                    >
+                      Approve / Confirm
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      className="flex-1 h-12 rounded-xl text-slate-500 font-bold hover:text-rose-600 hover:bg-rose-50 text-sm transition-all"
+                      onClick={() => onAction(booking.id, 'cancelled')}
+                    >
+                      Decline / Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
+          {/* Confirmed Status Flow */}
           {booking.status === 'confirmed' && (
-            <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl text-center">
-              <p className="text-emerald-700 font-bold text-xs flex items-center justify-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
-                Booking Confirmed!
-              </p>
+            <div className="space-y-3 pt-1 border-t border-slate-100">
+              <div className="bg-emerald-500/10 border border-emerald-200 p-3 rounded-2xl text-center">
+                <p className="text-emerald-800 font-bold text-xs flex items-center justify-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  Ride Confirmed! Dono users safar ke liye tayyar hain. 🎉
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <Button 
+                  onClick={onOpenLiveMap}
+                  className="h-12 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black shadow-lg shadow-blue-200/50 gap-2 text-xs sm:text-sm active:scale-95 transition-all"
+                >
+                  <MapPin className="w-4 h-4" />
+                  Live Location Share Karein
+                </Button>
+
+                <Button 
+                  onClick={() => onAction(booking.id, 'completed')}
+                  className="h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-200/50 gap-2 text-xs sm:text-sm active:scale-95 transition-all"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Safar Mukamal Hua
+                </Button>
+              </div>
             </div>
           )}
 
+          {/* Dismiss / Close Button */}
           {onDismiss && (
             <button
               type="button"
               onClick={() => onDismiss(booking.id)}
-              className="w-full py-2 text-center text-xs text-slate-400 hover:text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5 border border-dashed border-slate-200 mt-1"
+              className="w-full py-1.5 text-center text-xs text-slate-400 hover:text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-1 border border-dashed border-slate-200"
             >
               <X className="w-3.5 h-3.5 text-slate-400" />
-              Close / Dismiss Card
+              Card Hide Karein
             </button>
           )}
         </div>
@@ -2745,23 +2795,15 @@ function Dashboard({
   const [modalDestination, setModalDestination] = useState('');
   const [modalVehicleType, setModalVehicleType] = useState<'Car' | 'Bike' | 'All'>('All');
 
-  const [activeBookingModalItem, setActiveBookingModalItem] = useState<Booking | null>(null);
   const [dismissedBookingIds, setDismissedBookingIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (!user || !activeBookings || activeBookings.length === 0) {
-      setActiveBookingModalItem(null);
-      return;
-    }
+    if (!user || !activeBookings || activeBookings.length === 0) return;
 
     // 1. Pending booking
-    const pendingBooking = activeBookings.find(b => {
-      if (b.status !== 'pending' || dismissedBookingIds[b.id]) return false;
-      return true;
-    });
+    const pendingBooking = activeBookings.find(b => b.status === 'pending' && !dismissedBookingIds[b.id]);
 
     if (pendingBooking) {
-      setActiveBookingModalItem(pendingBooking);
       if (pendingBooking.source === 'live_active_mode' || pendingBooking.mode === 'active') {
         setDashboardMode('active');
       } else {
@@ -2781,14 +2823,11 @@ function Dashboard({
     });
 
     if (confirmedBooking) {
-      setActiveBookingModalItem(confirmedBooking);
       if (confirmedBooking.source === 'live_active_mode' || confirmedBooking.mode === 'active') {
         setDashboardMode('active');
       } else {
         setDashboardMode('advance');
       }
-    } else {
-      setActiveBookingModalItem(null);
     }
   }, [activeBookings, user, dismissedBookingIds]);
 
@@ -3418,26 +3457,11 @@ function Dashboard({
                   setDismissedBookingIds(prev => ({ ...prev, [bookingId]: true }));
                   toast.info("Booking card band ho gaya.");
                 }}
+                onOpenLiveMap={openLiveMap}
               />
             ))}
           </div>
         </div>
-      )}
-
-      {/* Active Ride Booking Interactive Modal */}
-      {activeBookingModalItem && user && (
-        <ActiveRideBookingModal
-          booking={activeBookingModalItem}
-          currentUserId={user.uid}
-          currentUserName={profile?.displayName || 'User'}
-          onClose={() => {
-            if (activeBookingModalItem) {
-              setDismissedBookingIds(prev => ({ ...prev, [activeBookingModalItem.id]: true }));
-            }
-            setActiveBookingModalItem(null);
-          }}
-          onOpenLiveMap={openLiveMap}
-        />
       )}
 
       {/* Wallet Modal for commission & loyalty visualization */}
