@@ -131,6 +131,8 @@ export default function LiveActivePassengerMap({
 
   const [driverCoords, setDriverCoords] = useState<{ lat: number; lng: number }>(getInitialCoords);
   const hasAutoCenteredRef = useRef(false);
+  const trackedTargetIdRef = useRef<string | null>(null);
+  const trackedTargetCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   const currentUid = auth.currentUser?.uid || driverProfile?.uid || driverProfile?.id;
 
@@ -146,10 +148,14 @@ export default function LiveActivePassengerMap({
     }
   }, [selfOrigin]);
 
-  // Reset auto-center flag when active mode turns on
+  // Reset auto-center flag when active mode turns on (only if not tracking deep link target)
   useEffect(() => {
     if (autoActive) {
-      hasAutoCenteredRef.current = false;
+      const params = new URLSearchParams(window.location.search);
+      const hasDeepLink = params.has('ride') || params.has('track') || params.has('bookingId') || params.has('activeLiveTrack');
+      if (!hasDeepLink && !trackedTargetIdRef.current) {
+        hasAutoCenteredRef.current = false;
+      }
     }
   }, [autoActive]);
 
@@ -344,6 +350,10 @@ export default function LiveActivePassengerMap({
 
     if (!targetRideId && !targetTrackUid) return;
 
+    // Immediately mark auto-centered as true so selfOrigin / GPS effects do not override deep link center
+    hasAutoCenteredRef.current = true;
+    trackedTargetIdRef.current = targetTrackUid || targetRideId;
+
     const processDeepLink = async () => {
       // 1. Check if matching target already in activeTargets
       if (activeTargets.length > 0) {
@@ -356,6 +366,7 @@ export default function LiveActivePassengerMap({
         if (match) {
           if (match.origin && setSelfOrigin) setSelfOrigin(match.origin);
           if (match.destination && setSelfDestination) setSelfDestination(match.destination);
+          trackedTargetCoordsRef.current = { lat: match.lat, lng: match.lng };
           if (leafletMapInstanceRef.current) {
             leafletMapInstanceRef.current.setView([match.lat, match.lng], 14);
           }
@@ -391,6 +402,7 @@ export default function LiveActivePassengerMap({
             if (bookingData.destination && setSelfDestination) setSelfDestination(bookingData.destination);
             const origKey = (bookingData.origin || '').toLowerCase().trim();
             const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+            trackedTargetCoordsRef.current = baseCoords;
             if (leafletMapInstanceRef.current) {
               leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
             }
@@ -418,6 +430,7 @@ export default function LiveActivePassengerMap({
             if (rideData.destination && setSelfDestination) setSelfDestination(rideData.destination);
             const origKey = (rideData.origin || '').toLowerCase().trim();
             const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+            trackedTargetCoordsRef.current = baseCoords;
             if (leafletMapInstanceRef.current) {
               leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
             }
@@ -441,6 +454,7 @@ export default function LiveActivePassengerMap({
             if (u.destination && setSelfDestination) setSelfDestination(u.destination);
             const origKey = (u.origin || '').toLowerCase().trim();
             const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+            trackedTargetCoordsRef.current = baseCoords;
             if (leafletMapInstanceRef.current) {
               leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
             }
@@ -456,6 +470,23 @@ export default function LiveActivePassengerMap({
     };
 
     processDeepLink();
+  }, [activeTargets]);
+
+  // Real-time map auto-follow for tracked target user movement
+  useEffect(() => {
+    if (!trackedTargetIdRef.current || activeTargets.length === 0) return;
+    const targetId = trackedTargetIdRef.current;
+    const match = activeTargets.find(t => 
+      t.id === targetId || 
+      (t as any).rideId === targetId || 
+      (t.phone && t.phone.includes(targetId))
+    );
+    if (match) {
+      trackedTargetCoordsRef.current = { lat: match.lat, lng: match.lng };
+      if (leafletMapInstanceRef.current) {
+        leafletMapInstanceRef.current.setView([match.lat, match.lng], leafletMapInstanceRef.current.getZoom() || 14);
+      }
+    }
   }, [activeTargets]);
 
   // Dynamically Load Leaflet Assets from CDN
@@ -611,6 +642,8 @@ export default function LiveActivePassengerMap({
         .addTo(map)
         .on('click', () => {
           setSelectedPassenger(prev => prev?.id === p.id ? null : p);
+          trackedTargetIdRef.current = p.id;
+          trackedTargetCoordsRef.current = { lat: p.lat, lng: p.lng };
           // Auto center on selected target
           map.setView([p.lat, p.lng], 14);
         });
@@ -1113,12 +1146,17 @@ export default function LiveActivePassengerMap({
             <button
               onClick={() => {
                 if (leafletMapInstanceRef.current) {
-                  leafletMapInstanceRef.current.setView([driverCoords.lat, driverCoords.lng], 13);
-                  toast.success("Map aapki location par recenter ho gaya hai!");
+                  if (trackedTargetCoordsRef.current) {
+                    leafletMapInstanceRef.current.setView([trackedTargetCoordsRef.current.lat, trackedTargetCoordsRef.current.lng], 14);
+                    toast.success("Tracked user ki live location par recenter ho gaya!");
+                  } else {
+                    leafletMapInstanceRef.current.setView([driverCoords.lat, driverCoords.lng], 13);
+                    toast.success("Map aapki location par recenter ho gaya hai!");
+                  }
                 }
               }}
               className="absolute bottom-4 left-4 z-[1000] flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/95 backdrop-blur-md text-white shadow-xl border border-slate-800 hover:bg-slate-850 active:scale-95 transition-all cursor-pointer pointer-events-auto group font-bold text-xs"
-              title="Apni location par wapis jayein (Recenter Map)"
+              title="Apni / Shared location par wapis jayein (Recenter Map)"
             >
               <Navigation className="w-4 h-4 text-emerald-400 group-hover:rotate-45 transition-transform" />
               <span>Re-center</span>
