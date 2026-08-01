@@ -123,26 +123,29 @@ export default function LiveActivePassengerMap({
   const activeMsgNotifiedRef = useRef<Set<string>>(new Set());
   const activeNotifNotifiedRef = useRef<Set<string>>(new Set());
 
-  // Dynamically initialize driverCoords based on selfOrigin city or Islamabad default
-  const getInitialCoords = () => {
-    const key = (selfOrigin || '').toLowerCase().trim();
-    return CITY_COORDS[key] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+  // Helper to extract initial tracked target from URL search params
+  const getInitialTrackedTarget = () => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('activeLiveTrack') || params.get('ride') || params.get('track') || params.get('bookingId') || null;
   };
 
+  const initialTarget = getInitialTrackedTarget();
   const [driverCoords, setDriverCoords] = useState<{ lat: number; lng: number }>(getInitialCoords);
-  const hasAutoCenteredRef = useRef(false);
-  const trackedTargetIdRef = useRef<string | null>(null);
+  const hasAutoCenteredRef = useRef<boolean>(!!initialTarget);
+  const trackedTargetIdRef = useRef<string | null>(initialTarget);
+  const trackedTargetUidsRef = useRef<Set<string>>(new Set(initialTarget ? [initialTarget] : []));
   const trackedTargetCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
 
   const currentUid = auth.currentUser?.uid || driverProfile?.uid || driverProfile?.id;
 
-  // Update driverCoords when selfOrigin changes if GPS hasn't auto-centered yet
+  // Update driverCoords when selfOrigin changes if GPS/tracking hasn't auto-centered yet
   useEffect(() => {
     const key = (selfOrigin || '').toLowerCase().trim();
     if (CITY_COORDS[key]) {
       const cityCoords = CITY_COORDS[key];
       setDriverCoords(cityCoords);
-      if (leafletMapInstanceRef.current && !hasAutoCenteredRef.current) {
+      if (leafletMapInstanceRef.current && !hasAutoCenteredRef.current && !trackedTargetIdRef.current) {
         leafletMapInstanceRef.current.setView([cityCoords.lat, cityCoords.lng], 13);
       }
     }
@@ -170,8 +173,8 @@ export default function LiveActivePassengerMap({
       };
       setDriverCoords(newCoords);
 
-      // Center Leaflet map on the real user GPS location ONCE when fetched/active mode enabled
-      if (leafletMapInstanceRef.current && !hasAutoCenteredRef.current) {
+      // Center Leaflet map on the real user GPS location ONCE when fetched/active mode enabled (if not tracking target)
+      if (leafletMapInstanceRef.current && !hasAutoCenteredRef.current && !trackedTargetIdRef.current) {
         leafletMapInstanceRef.current.setView([newCoords.lat, newCoords.lng], 13);
         hasAutoCenteredRef.current = true;
       }
@@ -263,12 +266,18 @@ export default function LiveActivePassengerMap({
       snapshot.docs.forEach(docSnap => {
         const data = docSnap.data();
 
-        // Strictly show users who are currently LIVE in real-time (isLive === true)
+        // Check if user is being actively tracked via deep link
+        const isTrackedUser = data.uid && (
+          trackedTargetIdRef.current === data.uid ||
+          trackedTargetUidsRef.current.has(data.uid)
+        );
+
+        // Show users who are currently LIVE in real-time (isLive === true)
         if (
           data.uid &&
           data.uid !== currentUid &&
           data.isLive === true &&
-          (data.role === targetRole || data.role === 'both')
+          (data.role === targetRole || data.role === 'both' || isTrackedUser)
         ) {
           activeLocsMap[data.uid] = {
             id: data.uid,
@@ -352,7 +361,14 @@ export default function LiveActivePassengerMap({
 
     // Immediately mark auto-centered as true so selfOrigin / GPS effects do not override deep link center
     hasAutoCenteredRef.current = true;
-    trackedTargetIdRef.current = targetTrackUid || targetRideId;
+    if (targetTrackUid) {
+      trackedTargetIdRef.current = targetTrackUid;
+      trackedTargetUidsRef.current.add(targetTrackUid);
+    }
+    if (targetRideId) {
+      trackedTargetIdRef.current = targetRideId;
+      trackedTargetUidsRef.current.add(targetRideId);
+    }
 
     const processDeepLink = async () => {
       // 1. Check if matching target already in activeTargets
@@ -360,12 +376,15 @@ export default function LiveActivePassengerMap({
         const match = activeTargets.find(t => 
           t.id === targetRideId || 
           t.id === targetTrackUid || 
+          trackedTargetUidsRef.current.has(t.id) ||
           (targetTrackUid && t.phone && t.phone.includes(targetTrackUid)) ||
           (targetRideId && (t as any).rideId === targetRideId)
         );
         if (match) {
           if (match.origin && setSelfOrigin) setSelfOrigin(match.origin);
           if (match.destination && setSelfDestination) setSelfDestination(match.destination);
+          trackedTargetIdRef.current = match.id;
+          trackedTargetUidsRef.current.add(match.id);
           trackedTargetCoordsRef.current = { lat: match.lat, lng: match.lng };
           if (leafletMapInstanceRef.current) {
             leafletMapInstanceRef.current.setView([match.lat, match.lng], 14);
@@ -377,35 +396,63 @@ export default function LiveActivePassengerMap({
         }
       }
 
-      // 2. Direct Firestore fetch for shared ride/booking ID if not found in activeTargets list
+      // 2. Direct Firestore fetch for shared ride/booking ID to resolve candidate participant UIDs
       if (targetRideId) {
         try {
           let bookingData: any = null;
-          let bookingIdFound = targetRideId;
-
           const bookingSnap = await getDoc(doc(db, 'bookings', targetRideId));
           if (bookingSnap.exists()) {
             bookingData = bookingSnap.data();
-            bookingIdFound = bookingSnap.id;
           } else {
             const q = query(collection(db, 'bookings'), where('rideId', '==', targetRideId), limit(1));
             const querySnap = await getDocs(q);
             if (!querySnap.empty) {
-              const d = querySnap.docs[0];
-              bookingData = d.data();
-              bookingIdFound = d.id;
+              bookingData = querySnap.docs[0].data();
             }
           }
 
           if (bookingData) {
             if (bookingData.origin && setSelfOrigin) setSelfOrigin(bookingData.origin);
             if (bookingData.destination && setSelfDestination) setSelfDestination(bookingData.destination);
-            const origKey = (bookingData.origin || '').toLowerCase().trim();
-            const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
-            trackedTargetCoordsRef.current = baseCoords;
-            if (leafletMapInstanceRef.current) {
-              leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+
+            const candidateUids = [
+              bookingData.driverId,
+              bookingData.passengerId,
+              bookingData.senderId,
+              ...(Array.isArray(bookingData.participants) ? bookingData.participants : [])
+            ].filter(Boolean);
+
+            candidateUids.forEach(uid => trackedTargetUidsRef.current.add(uid));
+
+            // Try direct fetch from activeLocations for candidate UIDs
+            let foundLiveLoc = false;
+            for (const candidateUid of candidateUids) {
+              if (candidateUid === currentUid) continue;
+              try {
+                const locSnap = await getDoc(doc(db, 'activeLocations', candidateUid));
+                if (locSnap.exists()) {
+                  const locData = locSnap.data();
+                  if (locData.lat && locData.lng) {
+                    trackedTargetIdRef.current = candidateUid;
+                    trackedTargetCoordsRef.current = { lat: locData.lat, lng: locData.lng };
+                    if (leafletMapInstanceRef.current) {
+                      leafletMapInstanceRef.current.setView([locData.lat, locData.lng], 14);
+                    }
+                    foundLiveLoc = true;
+                    break;
+                  }
+                }
+              } catch (e) {}
             }
+
+            if (!foundLiveLoc) {
+              const origKey = (bookingData.origin || '').toLowerCase().trim();
+              const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+              if (leafletMapInstanceRef.current && !trackedTargetCoordsRef.current) {
+                leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+              }
+            }
+
             if (window.location.search) {
               window.history.replaceState({}, '', window.location.pathname);
             }
@@ -428,12 +475,38 @@ export default function LiveActivePassengerMap({
           if (rideData) {
             if (rideData.origin && setSelfOrigin) setSelfOrigin(rideData.origin);
             if (rideData.destination && setSelfDestination) setSelfDestination(rideData.destination);
-            const origKey = (rideData.origin || '').toLowerCase().trim();
-            const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
-            trackedTargetCoordsRef.current = baseCoords;
-            if (leafletMapInstanceRef.current) {
-              leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+
+            const candidateUids = [rideData.driverId, rideData.passengerId, rideData.userId].filter(Boolean);
+            candidateUids.forEach(uid => trackedTargetUidsRef.current.add(uid));
+
+            let foundLiveLoc = false;
+            for (const candidateUid of candidateUids) {
+              if (candidateUid === currentUid) continue;
+              try {
+                const locSnap = await getDoc(doc(db, 'activeLocations', candidateUid));
+                if (locSnap.exists()) {
+                  const locData = locSnap.data();
+                  if (locData.lat && locData.lng) {
+                    trackedTargetIdRef.current = candidateUid;
+                    trackedTargetCoordsRef.current = { lat: locData.lat, lng: locData.lng };
+                    if (leafletMapInstanceRef.current) {
+                      leafletMapInstanceRef.current.setView([locData.lat, locData.lng], 14);
+                    }
+                    foundLiveLoc = true;
+                    break;
+                  }
+                }
+              } catch (e) {}
             }
+
+            if (!foundLiveLoc) {
+              const origKey = (rideData.origin || '').toLowerCase().trim();
+              const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+              if (leafletMapInstanceRef.current && !trackedTargetCoordsRef.current) {
+                leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+              }
+            }
+
             if (window.location.search) {
               window.history.replaceState({}, '', window.location.pathname);
             }
@@ -447,16 +520,24 @@ export default function LiveActivePassengerMap({
       // 3. Direct Firestore lookup for targetTrackUid
       if (targetTrackUid) {
         try {
-          const userSnap = await getDoc(doc(db, 'users', targetTrackUid));
-          if (userSnap.exists()) {
-            const u = userSnap.data();
-            if (u.origin && setSelfOrigin) setSelfOrigin(u.origin);
-            if (u.destination && setSelfDestination) setSelfDestination(u.destination);
-            const origKey = (u.origin || '').toLowerCase().trim();
-            const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
-            trackedTargetCoordsRef.current = baseCoords;
+          const locSnap = await getDoc(doc(db, 'activeLocations', targetTrackUid));
+          if (locSnap.exists() && locSnap.data().lat && locSnap.data().lng) {
+            const locData = locSnap.data();
+            trackedTargetCoordsRef.current = { lat: locData.lat, lng: locData.lng };
             if (leafletMapInstanceRef.current) {
-              leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+              leafletMapInstanceRef.current.setView([locData.lat, locData.lng], 14);
+            }
+          } else {
+            const userSnap = await getDoc(doc(db, 'users', targetTrackUid));
+            if (userSnap.exists()) {
+              const u = userSnap.data();
+              if (u.origin && setSelfOrigin) setSelfOrigin(u.origin);
+              if (u.destination && setSelfDestination) setSelfDestination(u.destination);
+              const origKey = (u.origin || '').toLowerCase().trim();
+              const baseCoords = CITY_COORDS[origKey] || CITY_COORDS['islamabad'] || { lat: 33.6844, lng: 73.0479 };
+              if (leafletMapInstanceRef.current && !trackedTargetCoordsRef.current) {
+                leafletMapInstanceRef.current.setView([baseCoords.lat, baseCoords.lng], 14);
+              }
             }
           }
         } catch (err) {
@@ -474,14 +555,20 @@ export default function LiveActivePassengerMap({
 
   // Real-time map auto-follow for tracked target user movement
   useEffect(() => {
-    if (!trackedTargetIdRef.current || activeTargets.length === 0) return;
+    if (activeTargets.length === 0) return;
     const targetId = trackedTargetIdRef.current;
+    if (!targetId && trackedTargetUidsRef.current.size === 0) return;
+
     const match = activeTargets.find(t => 
-      t.id === targetId || 
-      (t as any).rideId === targetId || 
-      (t.phone && t.phone.includes(targetId))
+      (targetId && t.id === targetId) || 
+      trackedTargetUidsRef.current.has(t.id) ||
+      (targetId && (t as any).rideId === targetId) ||
+      (targetId && t.phone && t.phone.includes(targetId))
     );
+
     if (match) {
+      trackedTargetIdRef.current = match.id;
+      trackedTargetUidsRef.current.add(match.id);
       trackedTargetCoordsRef.current = { lat: match.lat, lng: match.lng };
       if (leafletMapInstanceRef.current) {
         leafletMapInstanceRef.current.setView([match.lat, match.lng], leafletMapInstanceRef.current.getZoom() || 14);
@@ -1146,9 +1233,19 @@ export default function LiveActivePassengerMap({
             <button
               onClick={() => {
                 if (leafletMapInstanceRef.current) {
-                  if (trackedTargetCoordsRef.current) {
-                    leafletMapInstanceRef.current.setView([trackedTargetCoordsRef.current.lat, trackedTargetCoordsRef.current.lng], 14);
+                  const match = activeTargets.find(t => 
+                    (trackedTargetIdRef.current && t.id === trackedTargetIdRef.current) ||
+                    trackedTargetUidsRef.current.has(t.id) ||
+                    (trackedTargetIdRef.current && (t as any).rideId === trackedTargetIdRef.current)
+                  );
+
+                  if (match) {
+                    trackedTargetCoordsRef.current = { lat: match.lat, lng: match.lng };
+                    leafletMapInstanceRef.current.setView([match.lat, match.lng], 14);
                     toast.success("Tracked user ki live location par recenter ho gaya!");
+                  } else if (trackedTargetCoordsRef.current) {
+                    leafletMapInstanceRef.current.setView([trackedTargetCoordsRef.current.lat, trackedTargetCoordsRef.current.lng], 14);
+                    toast.success("Tracked user ki location par recenter ho gaya!");
                   } else {
                     leafletMapInstanceRef.current.setView([driverCoords.lat, driverCoords.lng], 13);
                     toast.success("Map aapki location par recenter ho gaya hai!");
