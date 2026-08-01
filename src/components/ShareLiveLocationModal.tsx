@@ -57,12 +57,15 @@ export const ShareLiveLocationModal: React.FC<ShareLiveLocationModalProps> = ({
           url: shareUrl
         });
         toast.success("Live location kamyabi se share ho gayi!");
+        return;
       } catch (err) {
-        // User cancelled or share failed
+        // User cancelled share
+        return;
       }
-    } else {
-      handleCopyLink();
     }
+    
+    // Fallback if native Web Share API is not available
+    handleWhatsAppShare();
   };
 
   const handleCopyLink = () => {
@@ -141,47 +144,18 @@ export const ShareLiveLocationModal: React.FC<ShareLiveLocationModalProps> = ({
 
             {/* Sharing Options */}
             <div className="space-y-2.5 pt-1">
-              {/* Option 1: WhatsApp */}
-              <Button
-                onClick={handleWhatsAppShare}
-                className="w-full h-13 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-200 gap-3 text-sm transition-all active:scale-98"
-              >
-                <MessageCircle className="w-5 h-5 fill-current" />
-                WhatsApp par Location Bhejein
-              </Button>
-
-              {/* Option 2: Native Share (Apps / SMS / Messages) */}
+              {/* Share Your Location Button */}
               <Button
                 onClick={handleNativeShare}
-                variant="outline"
-                className="w-full h-12 rounded-2xl border-slate-200 bg-white hover:bg-slate-50 text-slate-800 font-bold gap-3 text-sm transition-all active:scale-98"
+                className="w-full h-13 rounded-2xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300/80 font-black gap-3 text-base shadow-sm transition-all active:scale-98"
               >
-                <Share2 className="w-4 h-4 text-slate-600" />
-                Baqi Apps Par Share Karein
+                <Share2 className="w-5 h-5 text-emerald-700" />
+                Share Your Location
               </Button>
 
-              {/* Option 3: Copy Link */}
-              <Button
-                onClick={handleCopyLink}
-                variant="ghost"
-                className="w-full h-11 rounded-2xl text-slate-600 hover:bg-slate-100 font-semibold gap-2 text-xs"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-4 h-4 text-emerald-600" />
-                    Link Copy Ho Gaya!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4 text-slate-500" />
-                    Tracking Link Copy Karein
-                  </>
-                )}
-              </Button>
-
-              {/* Option 4: Open Live Map */}
+              {/* Option: Open Live Map */}
               {onOpenMap && (
-                <div className="pt-2 border-t border-slate-100">
+                <div className="pt-1 border-t border-slate-100">
                   <Button
                     onClick={() => {
                       onClose();
