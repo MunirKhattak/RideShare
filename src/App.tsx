@@ -48,6 +48,7 @@ import {
   MapPin,
   LogOut,
   Sparkles,
+  Zap,
   Send,
   MessageCircle,
   ShieldCheck,
@@ -2617,9 +2618,28 @@ function Dashboard({
   onShowAd?: () => void
 }) {
   const userRole = profile?.role || 'passenger';
+  const [dashboardMode, setDashboardMode] = useState<'advance' | 'active'>('advance');
   const [activeRidesList, setActiveRidesList] = useState<any[]>([]);
   const [activeRequestsList, setActiveRequestsList] = useState<any[]>([]);
   const [showLiveMap, setShowLiveMap] = useState(false);
+
+  const openLiveMap = () => {
+    window.history.pushState({ liveMap: true, view: 'dashboard', travelScope }, '', '');
+    setShowLiveMap(true);
+  };
+
+  useEffect(() => {
+    if (!showLiveMap) return;
+
+    const handleLiveMapPopState = () => {
+      setShowLiveMap(false);
+    };
+
+    window.addEventListener('popstate', handleLiveMapPopState);
+    return () => {
+      window.removeEventListener('popstate', handleLiveMapPopState);
+    };
+  }, [showLiveMap]);
   const [autoActive, setAutoActiveState] = useState<boolean>(() => {
     const saved = localStorage.getItem('easy_travel_auto_active');
     return saved !== null ? saved === 'true' : true;
@@ -2735,7 +2755,11 @@ function Dashboard({
           userRole={userRole === 'driver' ? 'driver' : 'passenger'}
           driverProfile={profile} 
           onClose={() => {
-            setShowLiveMap(false);
+            if (window.history.state?.liveMap) {
+              window.history.back();
+            } else {
+              setShowLiveMap(false);
+            }
           }} 
           autoActive={autoActive}
           setAutoActive={setAutoActive}
@@ -2789,269 +2813,433 @@ function Dashboard({
         </div>
       </div>
 
-      {/* Foran Passenger/Ride Mode available for both roles */}
-      <>
-        <Card 
-          onClick={() => {
-            if (autoActive) {
-              setShowLiveMap(true);
-            }
-          }}
-          className={`border border-slate-100 shadow-md bg-white rounded-2xl overflow-hidden p-4 relative transition-all duration-300 ${autoActive ? 'cursor-pointer hover:border-blue-200 hover:shadow-lg bg-blue-50/5' : ''}`}
+      {/* 2 Top Mode Selection Cards */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-1 mb-5 sm:mb-6">
+        {/* Left Card: Kal ya Baad me Jana Hai (Advance Mode - DEFAULT) */}
+        <div
+          onClick={() => setDashboardMode('advance')}
+          className={`p-3.5 sm:p-5 rounded-2xl cursor-pointer transition-all duration-300 border relative overflow-hidden flex flex-col justify-between select-none ${
+            dashboardMode === 'advance'
+              ? 'bg-gradient-to-br from-indigo-600 via-blue-600 to-indigo-700 text-white border-indigo-600 shadow-lg shadow-indigo-500/20 ring-2 ring-indigo-500/40 scale-[1.01]'
+              : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300 shadow-sm hover:shadow opacity-90 hover:opacity-100'
+          }`}
         >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1 min-w-0">
-              <div className="flex flex-wrap items-center">
-                <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 text-[13px] font-black px-3 py-1 rounded-full border border-blue-200/60 shadow-sm font-sans whitespace-nowrap">
-                  <span className="w-2 h-2 bg-blue-600 rounded-full animate-ping shrink-0" />
-                  <span>{userRole === 'driver' ? 'Fauran Passenger Chahye' : 'Fauran Ride Chahye'}</span>
-                  <span className="ml-3 tracking-[0.15em] font-extrabold text-[11px] text-blue-500 uppercase shrink-0">(Active Mode)</span>
-                </span>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className={`p-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center ${
+                dashboardMode === 'advance' ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-600'
+              }`}>
+                <CalendarIcon className="w-5 h-5" />
               </div>
-              <p className="text-xs font-semibold text-slate-700 leading-relaxed pt-1">
-                {userRole === 'driver' 
-                  ? 'Agar aap ko abhi foran passenger chahiye, to active button on karein. Aur agay Map pe aur Map k neche List me Active Passengers me se ksi k sath bhi apni Ride Done kren.'
-                  : 'Agar aap ko abhi foran rider ya active car / bike owner chahiye, to active button on karein. Aur agay Map pe aur Map k neche List me Active Car/Bike Owners me se ksi k sath bhi apni Ride Done kren.'}
+              {/* Green indicator dot removed as requested */}
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm sm:text-base leading-tight">
+                Kal ya Baad me Jana Hai
+              </h3>
+              <p className={`text-[10px] sm:text-xs font-bold mt-1 ${
+                dashboardMode === 'advance' ? 'text-indigo-100' : 'text-slate-500'
+              }`}>
+                (Schedule Mode)
               </p>
             </div>
-            
-            <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
-              <div className="flex items-center gap-1.5">
-                <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors duration-200 ${autoActive ? 'text-blue-600 font-extrabold' : 'text-slate-400 opacity-60'}`}>
-                  Active
-                </span>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!gpsEnabled) {
-                      setShowGpsModal(true);
-                    } else {
-                      const nextVal = !autoActive;
-                      if (nextVal) {
-                        setModalOrigin('');
-                        setModalDestination('');
-                        setModalVehicleType(travelScope === 'intercity' ? 'Car' : selfVehicleType);
-                        setShowRouteModal(true);
-                      } else {
-                        setAutoActive(false);
-                        toast.info("Active mode turned OFF.");
-                      }
-                    }
-                  }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${autoActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoActive ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
+          </div>
+        </div>
+
+        {/* Right Card: Abhi esi Waqt Jana Hai (Active Mode) */}
+        <div
+          onClick={() => setDashboardMode('active')}
+          className={`p-3.5 sm:p-5 rounded-2xl cursor-pointer transition-all duration-300 border relative overflow-hidden flex flex-col justify-between select-none ${
+            dashboardMode === 'active'
+              ? 'bg-gradient-to-br from-blue-600 via-emerald-600 to-emerald-700 text-white border-emerald-600 shadow-lg shadow-emerald-500/20 ring-2 ring-emerald-500/40 scale-[1.01]'
+              : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300 shadow-sm hover:shadow opacity-90 hover:opacity-100'
+          }`}
+        >
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className={`p-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center ${
+                dashboardMode === 'active' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-600'
+              }`}>
+                <Zap className="w-5 h-5" />
               </div>
             </div>
+            <div>
+              <h3 className="font-extrabold text-sm sm:text-base leading-tight">
+                Abhi esi Waqt Jana Hai
+              </h3>
+              <p className={`text-[10px] sm:text-xs font-bold mt-1 ${
+                dashboardMode === 'active' ? 'text-blue-100' : 'text-slate-500'
+              }`}>
+                (Active Mode)
+              </p>
+            </div>
           </div>
-        </Card>
+        </div>
+      </div>
 
-        {/* GPS Location Permission Enable Modal */}
-        <AnimatePresence>
-          {showGpsModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden p-6 text-center space-y-4"
+      {/* Mode Content Views */}
+      <AnimatePresence mode="wait">
+        {dashboardMode === 'advance' ? (
+          <motion.div
+            key="mode-advance"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-5"
+          >
+            {/* 4 Action Cards */}
+            <div className="grid grid-cols-1 gap-4">
+              <Button 
+                className="h-20 sm:h-24 text-lg sm:text-xl gap-4 bg-emerald-600 hover:bg-emerald-700 shadow-xl rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.99]"
+                onClick={() => setView('search')}
               >
-                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-100">
-                  <MapPin className="w-8 h-8 animate-pulse" />
+                <div className="bg-white/20 p-2 sm:p-2.5 rounded-xl">
+                  <Search className="w-6 h-6 sm:w-7 sm:h-7" />
                 </div>
-                <div className="space-y-1.5">
-                  <h3 className="text-lg font-bold text-slate-900">GPS Location Off Hai</h3>
-                  <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                    Apna actual real-time location (GPS location) on karein taake aap active {userRole === 'driver' ? 'passengers' : 'drivers aur rides'} aur surroundings ko maps par dekh sakein.
+                {userRole === 'driver' ? 'Passenger Dhoonden' : 'Car Owner Dhoonden'}
+              </Button>
+              <Button 
+                className="h-20 sm:h-24 text-lg sm:text-xl gap-4 bg-indigo-600 hover:bg-indigo-700 shadow-xl rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.99]"
+                onClick={() => setView('post')}
+              >
+                <div className="bg-white/20 p-2 sm:p-2.5 rounded-xl">
+                  <Plus className="w-6 h-6 sm:w-7 sm:h-7" />
+                </div>
+                Naya Post Lagayen
+              </Button>
+              {userRole === 'driver' ? (
+                <Button 
+                  className="h-20 sm:h-24 text-lg sm:text-xl gap-4 bg-amber-600 hover:bg-amber-700 shadow-xl rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.99]"
+                  onClick={() => setView('my_rides')}
+                >
+                  <div className="bg-white/20 p-2 sm:p-2.5 rounded-xl">
+                    <Car className="w-6 h-6 sm:w-7 sm:h-7" />
+                  </div>
+                  Mere Posts
+                </Button>
+              ) : (
+                <Button 
+                  className="h-20 sm:h-24 text-lg sm:text-xl gap-4 bg-rose-600 hover:bg-rose-700 shadow-xl rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.99]"
+                  onClick={() => setView('my_requests')}
+                >
+                  <div className="bg-white/20 p-2 sm:p-2.5 rounded-xl">
+                    <UserIcon className="w-6 h-6 sm:w-7 sm:h-7" />
+                  </div>
+                  Mere Posts
+                </Button>
+              )}
+              <Button 
+                className="h-20 sm:h-24 text-lg sm:text-xl gap-4 bg-blue-600 hover:bg-blue-700 shadow-xl rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.99]"
+                onClick={() => setView('messages')}
+              >
+                <div className="bg-white/20 p-2 sm:p-2.5 rounded-xl">
+                  <MessageSquare className="w-6 h-6 sm:w-7 sm:h-7" />
+                </div>
+                Messages (Chat)
+              </Button>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="mode-active"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-5"
+          >
+            {/* Active Mode Description Card */}
+            <Card 
+              onClick={() => {
+                if (autoActive) {
+                  openLiveMap();
+                }
+              }}
+              className={`border border-blue-100 shadow-md bg-gradient-to-br from-blue-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden p-4 relative transition-all duration-300 ${autoActive ? 'cursor-pointer hover:border-blue-200 hover:shadow-lg' : ''}`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex flex-wrap items-center">
+                    <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 text-[13px] font-black px-3 py-1 rounded-full border border-blue-200/60 shadow-sm font-sans whitespace-nowrap">
+                      <span>Active Mode</span>
+                    </span>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-700 leading-relaxed pt-1">
+                    {userRole === 'driver' 
+                      ? 'Agar aap ko abhi foran passenger chahiye, to active button on karein. Aur agay Map pe aur Map k neche List me Active Passengers me se ksi k sath bhi apni Ride Done kren.'
+                      : 'Agar aap ko abhi foran rider ya active car / bike owner chahiye, to active button on karein. Aur agay Map pe aur Map k neche List me Active Car/Bike Owners me se ksi k sath bhi apni Ride Done kren.'}
                   </p>
                 </div>
-                <div className="flex flex-col gap-2 pt-2">
-                  <Button 
-                    onClick={() => {
-                      setGpsEnabled(true);
-                      setShowGpsModal(false);
-                      setModalOrigin('');
-                      setModalDestination('');
-                      setModalVehicleType(travelScope === 'intercity' ? 'Car' : selfVehicleType);
-                      setShowRouteModal(true);
+                
+                <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors duration-200 ${autoActive ? 'text-blue-600 font-extrabold' : 'text-slate-400 opacity-60'}`}>
+                      Active
+                    </span>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (autoActive) {
+                          setAutoActive(false);
+                          toast.info("Active mode turned OFF.");
+                        } else if (!gpsEnabled) {
+                          setShowGpsModal(true);
+                        } else {
+                          setModalOrigin('');
+                          setModalDestination('');
+                          setModalVehicleType(travelScope === 'intercity' ? 'Car' : selfVehicleType);
+                          setShowRouteModal(true);
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${autoActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${autoActive ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {autoActive && (
+                <div className="mt-4 pt-3 border-t border-blue-100 flex items-center justify-between">
+                  <p className="text-xs text-blue-700 font-bold flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-blue-600 animate-bounce" />
+                    Live Map Par Online Hain
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openLiveMap();
                     }}
-                    className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 font-bold text-sm text-white rounded-xl shadow-lg border-none"
+                    className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black px-4 h-9 shadow-md"
                   >
-                    GPS Turn On Karein
-                  </Button>
-                  <Button 
-                    variant="ghost"
-                    onClick={() => setShowGpsModal(false)}
-                    className="w-full h-10 text-xs text-slate-400 font-semibold hover:bg-slate-50 hover:text-slate-600"
-                  >
-                    Abhi Nahi
+                    Live Map Open Karein ➔
                   </Button>
                 </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+              )}
+            </Card>
 
-        {/* ROUTE SELECTION MODAL (Kahan Se - Kahan Tak) */}
-        <AnimatePresence>
-          {showRouteModal && (
-            <div className="fixed inset-0 z-[2000] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden p-6 space-y-6 border border-slate-100 text-slate-900"
+            {/* Direct button to Live Map if active */}
+            {autoActive && (
+              <Button 
+                className="w-full h-20 text-lg gap-4 bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700 text-white shadow-xl rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.99] font-black"
+                onClick={() => openLiveMap()}
               >
-                {/* Header */}
-                <div className="text-center space-y-2">
-                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto border border-blue-100">
-                    <Navigation className="w-6 h-6 animate-pulse text-blue-600" />
-                  </div>
-                  <div>
-                    <h4 className="text-lg font-black text-slate-900 tracking-tight">Active Route Set Karein</h4>
-                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                      Aap is waqt <span className="font-extrabold text-blue-600">{userRole === 'driver' ? 'Driver 🚗' : 'Passenger 🎒'}</span> k taur par online ja rahay hain.
-                    </p>
+                <div className="bg-white/20 p-2 rounded-xl">
+                  <Navigation className="w-6 h-6 animate-pulse" />
+                </div>
+                Live Active Map Par Jayen 🗺️
+              </Button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* GPS Location Permission Enable Modal */}
+      <AnimatePresence>
+        {showGpsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-3xl max-w-sm w-full shadow-2xl overflow-hidden p-6 text-center space-y-4"
+            >
+              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-100">
+                <MapPin className="w-8 h-8 animate-pulse" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-lg font-bold text-slate-900">GPS Location Off Hai</h3>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                  Apna actual real-time location (GPS location) on karein taake aap active {userRole === 'driver' ? 'passengers' : 'drivers aur rides'} aur surroundings ko maps par dekh sakein.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 pt-2">
+                <Button 
+                  onClick={() => {
+                    setGpsEnabled(true);
+                    setShowGpsModal(false);
+                    setModalOrigin('');
+                    setModalDestination('');
+                    setModalVehicleType(travelScope === 'intercity' ? 'Car' : selfVehicleType);
+                    setShowRouteModal(true);
+                  }}
+                  className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 font-bold text-sm text-white rounded-xl shadow-lg border-none"
+                >
+                  GPS Turn On Karein
+                </Button>
+                <Button 
+                  variant="ghost"
+                  onClick={() => setShowGpsModal(false)}
+                  className="w-full h-10 text-xs text-slate-400 font-semibold hover:bg-slate-50 hover:text-slate-600"
+                >
+                  Abhi Nahi
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ROUTE SELECTION MODAL (Kahan Se - Kahan Tak) */}
+      <AnimatePresence>
+        {showRouteModal && (
+          <div className="fixed inset-0 z-[2000] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden p-6 space-y-6 border border-slate-100 text-slate-900"
+            >
+              {/* Header */}
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto border border-blue-100">
+                  <Navigation className="w-6 h-6 animate-pulse text-blue-600" />
+                </div>
+                <div>
+                  <h4 className="text-lg font-black text-slate-900 tracking-tight">Active Route Set Karein</h4>
+                  <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                    Aap is waqt <span className="font-extrabold text-blue-600">{userRole === 'driver' ? 'Driver 🚗' : 'Passenger 🎒'}</span> k taur par online ja rahay hain.
+                  </p>
+                </div>
+              </div>
+
+              {/* Form inputs */}
+              <div className="space-y-4 text-left">
+                {/* From Box */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Kahan Se? (Where to go from?)
+                  </label>
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      value={modalOrigin}
+                      onChange={(e) => setModalOrigin(e.target.value)}
+                      placeholder="e.g. Karak"
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-950 placeholder:italic placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
+                    />
                   </div>
                 </div>
 
-                {/* Form inputs */}
-                <div className="space-y-4 text-left">
-                  {/* From Box */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      Kahan Se? (Where to go from?)
-                    </label>
-                    <div className="relative">
-                      <input 
-                        type="text" 
-                        value={modalOrigin}
-                        onChange={(e) => setModalOrigin(e.target.value)}
-                        placeholder="e.g. Karak"
-                        className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-950 placeholder:italic placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
-                      />
-                    </div>
+                {/* To Box */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                    Kahan Tak? (Where to go to?)
+                  </label>
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      value={modalDestination}
+                      onChange={(e) => setModalDestination(e.target.value)}
+                      placeholder={travelScope === 'intercity' ? "e.g. Islamabad" : "e.g. Latamber, Karak"}
+                      className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-950 placeholder:italic placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
+                    />
                   </div>
-
-                  {/* To Box */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                      Kahan Tak? (Where to go to?)
-                    </label>
-                    <div className="relative">
-                      <input 
-                        type="text" 
-                        value={modalDestination}
-                        onChange={(e) => setModalDestination(e.target.value)}
-                        placeholder={travelScope === 'intercity' ? "e.g. Islamabad" : "e.g. Latamber, Karak"}
-                        className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm bg-slate-50/50 text-slate-950 placeholder:italic placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Options below the inputs based on role */}
-                  {travelScope !== 'intercity' && (
-                    <div className="space-y-2 pt-1">
-                      {userRole === 'passenger' ? (
-                        <>
-                          <label className="text-xs font-bold text-slate-700">
-                            Safar Kis Cheez Par Karna Hai? (Preference)
-                          </label>
-                          <div className="grid grid-cols-3 gap-2">
-                            {[
-                              { value: 'All', label: 'All 🎒', desc: 'Any Ride' },
-                              { value: 'Car', label: 'Car 🚗', desc: 'Comfortable' },
-                              { value: 'Bike', label: 'Bike 🏍️', desc: 'Fast & Eco' }
-                            ].map((opt) => (
-                              <button
-                                type="button"
-                                key={opt.value}
-                                onClick={() => setModalVehicleType(opt.value as any)}
-                                className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5 ${
-                                  modalVehicleType === opt.value
-                                    ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20 font-black scale-[1.03]'
-                                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 font-semibold'
-                                }`}
-                              >
-                                <span className="text-xs">{opt.label}</span>
-                                <span className={`text-[8px] font-medium block ${modalVehicleType === opt.value ? 'text-blue-100' : 'text-slate-400'}`}>
-                                  {opt.desc}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <label className="text-xs font-bold text-slate-700">
-                            Aapke Paas Konsi Gari Hai? (Vehicle Type)
-                          </label>
-                          <div className="grid grid-cols-2 gap-3">
-                            {[
-                              { value: 'Car', label: 'Car 🚗', desc: '4-Wheel Owner' },
-                              { value: 'Bike', label: 'Bike 🏍️', desc: '2-Wheel Owner' }
-                            ].map((opt) => (
-                              <button
-                                type="button"
-                                key={opt.value}
-                                onClick={() => setModalVehicleType(opt.value as any)}
-                                className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
-                                  modalVehicleType === opt.value
-                                    ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20 font-black scale-[1.03]'
-                                    : 'bg-slate-50 hover:bg-slate-105 border-slate-200 text-slate-700 font-semibold'
-                                }`}
-                              >
-                                <span className="text-sm">{opt.label}</span>
-                                <span className={`text-[9px] font-medium block ${modalVehicleType === opt.value ? 'text-blue-100' : 'text-slate-400'}`}>
-                                  {opt.desc}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
                 </div>
 
-                {/* Submitting Actions */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <Button 
-                    onClick={() => setShowRouteModal(false)}
-                    variant="outline"
-                    className="rounded-2xl font-bold h-11 text-xs text-slate-600 hover:bg-slate-55 border border-slate-200"
-                  >
-                    Nahi (Cancel)
-                  </Button>
-                  <Button 
-                    onClick={() => {
-                      if (!modalOrigin.trim() || !modalDestination.trim()) {
-                        toast.error("Meherbani farma kar dono fields fill karein!");
-                        return;
-                      }
-                      setSelfOrigin(modalOrigin.trim());
-                      setSelfDestination(modalDestination.trim());
-                      setSelfVehicleType(modalVehicleType);
-                      setShowRouteModal(false);
-                      setAutoActive(true);
-                      setShowLiveMap(true); // Navigate directly to map page!
-                      toast.success(
-                        `Aap live ho chuke hain! Route: ${modalOrigin.trim()} ➔ ${modalDestination.trim()} (${modalVehicleType === 'All' ? 'Car & Bike All' : modalVehicleType})`
-                      );
-                    }}
-                    className="bg-blue-600 hover:bg-blue-750 text-white rounded-2xl font-extrabold h-11 text-xs border-none shadow-lg shadow-blue-500/20"
-                  >
-                    Yes [OK]
-                  </Button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-      </>
+                {/* Options below the inputs based on role */}
+                {travelScope !== 'intercity' && (
+                  <div className="space-y-2 pt-1">
+                    {userRole === 'passenger' ? (
+                      <>
+                        <label className="text-xs font-bold text-slate-700">
+                          Safar Kis Cheez Par Karna Hai? (Preference)
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { value: 'All', label: 'All 🎒', desc: 'Any Ride' },
+                            { value: 'Car', label: 'Car 🚗', desc: 'Comfortable' },
+                            { value: 'Bike', label: 'Bike 🏍️', desc: 'Fast & Eco' }
+                          ].map((opt) => (
+                            <button
+                              type="button"
+                              key={opt.value}
+                              onClick={() => setModalVehicleType(opt.value as any)}
+                              className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-0.5 ${
+                                modalVehicleType === opt.value
+                                  ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20 font-black scale-[1.03]'
+                                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 font-semibold'
+                              }`}
+                            >
+                              <span className="text-xs">{opt.label}</span>
+                              <span className={`text-[8px] font-medium block ${modalVehicleType === opt.value ? 'text-blue-100' : 'text-slate-400'}`}>
+                                {opt.desc}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <label className="text-xs font-bold text-slate-700">
+                          Aapke Paas Konsi Gari Hai? (Vehicle Type)
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { value: 'Car', label: 'Car 🚗', desc: '4-Wheel Owner' },
+                            { value: 'Bike', label: 'Bike 🏍️', desc: '2-Wheel Owner' }
+                          ].map((opt) => (
+                            <button
+                              type="button"
+                              key={opt.value}
+                              onClick={() => setModalVehicleType(opt.value as any)}
+                              className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                                modalVehicleType === opt.value
+                                  ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20 font-black scale-[1.03]'
+                                  : 'bg-slate-50 hover:bg-slate-105 border-slate-200 text-slate-700 font-semibold'
+                              }`}
+                            >
+                              <span className="text-sm">{opt.label}</span>
+                              <span className={`text-[9px] font-medium block ${modalVehicleType === opt.value ? 'text-blue-100' : 'text-slate-400'}`}>
+                                {opt.desc}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Submitting Actions */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <Button 
+                  onClick={() => setShowRouteModal(false)}
+                  variant="outline"
+                  className="rounded-2xl font-bold h-11 text-xs text-slate-600 hover:bg-slate-55 border border-slate-200"
+                >
+                  Nahi (Cancel)
+                </Button>
+                <Button 
+                  onClick={() => {
+                    if (!modalOrigin.trim() || !modalDestination.trim()) {
+                      toast.error("Meherbani farma kar dono fields fill karein!");
+                      return;
+                    }
+                    setSelfOrigin(modalOrigin.trim());
+                    setSelfDestination(modalDestination.trim());
+                    setSelfVehicleType(modalVehicleType);
+                    setShowRouteModal(false);
+                    setAutoActive(true);
+                    openLiveMap(); // Navigate directly to map page!
+                    toast.success(
+                      `Aap live ho chuke hain! Route: ${modalOrigin.trim()} ➔ ${modalDestination.trim()} (${modalVehicleType === 'All' ? 'Car & Bike All' : modalVehicleType})`
+                    );
+                  }}
+                  className="bg-blue-600 hover:bg-blue-750 text-white rounded-2xl font-extrabold h-11 text-xs border-none shadow-lg shadow-blue-500/20"
+                >
+                  Yes [OK]
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {filteredBookings.length > 0 && (
         <div className="space-y-3">
@@ -3069,81 +3257,6 @@ function Dashboard({
           </div>
         </div>
       )}
-
-      {/* Informative Advance Booking Banner */}
-      <div className="bg-gradient-to-br from-indigo-50/80 via-blue-50/50 to-white border border-indigo-100/80 rounded-2xl p-4 flex items-start gap-3.5 shadow-sm transition-all hover:shadow duration-300">
-        <div className="bg-gradient-to-br from-indigo-500 to-blue-600 p-2.5 rounded-xl shadow-md text-white shrink-0 mt-0.5">
-          <CalendarIcon className="w-5 h-5" />
-        </div>
-        <div className="space-y-1">
-          <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5 leading-none">
-            Advance Booking Plan Karen <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
-          </h4>
-          <p className="text-xs text-slate-600 font-medium leading-relaxed">
-            {userRole === 'driver' ? (
-              <>
-                Agar aap ne <span className="text-indigo-600 font-extrabold">Kal</span> <span className="text-slate-400 font-normal">ya</span> <span className="text-indigo-600 font-extrabold">Baad</span> <span className="text-slate-400 font-normal">me</span> jana hai to neche <span className="text-emerald-600 font-bold">Passenger Dhoonden</span> ya <span className="text-indigo-600 font-bold">Naya Post lagaaen</span> taakeh Passengers aapke sath advance booking kar saken.
-              </>
-            ) : (
-              <>
-                Agar aap ne <span className="text-indigo-600 font-extrabold">Kal</span> <span className="text-slate-400 font-normal">ya</span> <span className="text-indigo-600 font-extrabold">Baad</span> <span className="text-slate-400 font-normal">me</span> jana hai to neche <span className="text-emerald-600 font-bold">Car Owner Dhoonden</span> ya <span className="text-indigo-600 font-bold">Naya Post lagaaen</span> taakeh Car Owners aapke sath advance booking kar saken.
-              </>
-            )}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-5">
-        <Button 
-          className="h-24 text-xl gap-4 bg-emerald-600 hover:bg-emerald-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
-          onClick={() => setView('search')}
-        >
-          <div className="bg-white/20 p-2 rounded-xl">
-            <Search className="w-7 h-7" />
-          </div>
-          {userRole === 'driver' ? 'Passenger Dhoonden' : 'Car Owner Dhoonden'}
-        </Button>
-        <Button 
-          className="h-24 text-xl gap-4 bg-indigo-600 hover:bg-indigo-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
-          onClick={() => setView('post')}
-        >
-          <div className="bg-white/20 p-2 rounded-xl">
-            <Plus className="w-7 h-7" />
-          </div>
-          {userRole === 'driver' ? 'Naya Post Lagayen' : 'Naya Post Lagayen'}
-        </Button>
-        {userRole === 'driver' && (
-          <Button 
-            className="h-24 text-xl gap-4 bg-amber-600 hover:bg-amber-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
-            onClick={() => setView('my_rides')}
-          >
-            <div className="bg-white/20 p-2 rounded-xl">
-              <Car className="w-7 h-7" />
-            </div>
-            Mere Posts
-          </Button>
-        )}
-        {userRole === 'passenger' && (
-          <Button 
-            className="h-24 text-xl gap-4 bg-rose-600 hover:bg-rose-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
-            onClick={() => setView('my_requests')}
-          >
-            <div className="bg-white/20 p-2 rounded-xl">
-              <UserIcon className="w-7 h-7" />
-            </div>
-            Mere Posts
-          </Button>
-        )}
-        <Button 
-          className="h-24 text-xl gap-4 bg-blue-600 hover:bg-blue-700 shadow-xl rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
-          onClick={() => setView('messages')}
-        >
-          <div className="bg-white/20 p-2 rounded-xl">
-            <MessageSquare className="w-7 h-7" />
-          </div>
-          Messages (Chat)
-        </Button>
-      </div>
 
       {/* Wallet Modal for commission & loyalty visualization */}
       <WalletModal 
